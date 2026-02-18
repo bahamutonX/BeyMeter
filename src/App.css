@@ -370,6 +370,15 @@
   white-space: nowrap;
 }
 
+.chart-status-meta {
+  display: none;
+  gap: 2px;
+  justify-items: end;
+  font-size: 11px;
+  color: #b7d7ec;
+  white-space: nowrap;
+}
+
 .mobile-recent-msg {
   margin: 2px 0 8px;
   font-size: 12px;
@@ -943,6 +952,11 @@
     font-size: 10px;
   }
 
+  .chart-status-meta {
+    display: grid;
+    font-size: 10px;
+  }
+
   .main-value {
     font-size: 44px;
   }
@@ -953,6 +967,11 @@
 
   .sub-value {
     font-size: 26px;
+  }
+
+  .launcher-line,
+  .shoot-type-label {
+    font-size: 12px;
   }
 
   .connect-pill {
@@ -1181,9 +1200,12 @@
   .current-section,
   .history-section,
   .stats-two-col,
-  .sub-card-row,
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sub-card-row {
+    grid-template-columns: 1fr 1fr;
   }
 
   .section-head-row {

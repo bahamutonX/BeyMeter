@@ -515,8 +515,8 @@ export function AppShell() {
       <div className="section-head-row recent-head-row">
         <SectionHeader
           en="RECENT"
-          title="直近のシュート"
-          description="いまの1本を表示"
+          title="シュート解析"
+          description="シュートを検知してシュートパワーとシュート波形を表示"
         />
         <div className="recent-status-row" aria-label="直近画面ステータス">
           <div className="status-item compact">
@@ -567,7 +567,7 @@ export function AppShell() {
           </article>
           <div className="sub-card-row">
             <article className="sub-card">
-              <h3>推定シュートパワー（波形補正値）</h3>
+              <h3>推定SP（波形補正値）</h3>
               <div className="sub-value">
                 {latest ? (
                   <>
@@ -580,7 +580,7 @@ export function AppShell() {
               </div>
             </article>
             <article className="sub-card">
-              <h3>最大シュートパワー（ピーク値）</h3>
+              <h3>最大SP（ピーク値）</h3>
               <div className="sub-value">
                 {latest ? (
                   <>
@@ -598,6 +598,18 @@ export function AppShell() {
         <NeonPanel className="current-right">
           <div className="chart-head-row">
             <h3>直近のシュート波形</h3>
+            <div className="chart-status-meta" aria-label="接続状態">
+              <span>
+                {bleUi.connecting
+                  ? 'BBP: 接続中...'
+                  : bleUi.disconnecting
+                    ? 'BBP: 切断中...'
+                    : bleUi.connected
+                      ? 'BBP: 接続中'
+                      : 'BBP: 未接続'}
+              </span>
+              <span>{bleUi.connected ? (isBayAttached ? 'ベイ: 装着' : 'ベイ: 未装着') : 'ベイ: 不明'}</span>
+            </div>
             <div className="shot-meta">
               <span>ピーク: {latest ? `${latestPeakTimeMs}ms` : '--'}</span>
               <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
