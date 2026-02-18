@@ -287,12 +287,12 @@ export function AppShell() {
     [yourScores],
   )
 
-  const bandStats = useMemo(() => buildBandStats(persistedShots, (s) => s.estSp), [persistedShots])
+  const bandStats = useMemo(() => buildBandStats(persistedShots, (s) => s.yourSp), [persistedShots])
   const selectedBandShots = useMemo(() => {
     const def = BAND_DEFS.find((d) => d.id === selectedBandId)
     if (!def) return []
     return persistedShots.filter((s) => {
-      const score = s.estSp
+      const score = s.yourSp
       if (score < def.min) return false
       if (def.maxExclusive !== null && score >= def.maxExclusive) return false
       return true
