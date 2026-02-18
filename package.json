@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "postinstall": "node scripts/persist-bluetooth-le-ios-patch.mjs",
     "build": "tsc -b && vite build",
     "build:pages": "tsc -b && VITE_BASE_PATH=/BeyMeter/ vite build",
     "lint": "eslint .",

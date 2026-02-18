@@ -309,6 +309,23 @@
   margin-top: 2px;
 }
 
+.recent-head-row {
+  align-items: flex-start;
+}
+
+.recent-status-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.status-item.compact {
+  font-size: 11px;
+}
+
 .history-reset-btn {
   white-space: nowrap;
 }
@@ -351,6 +368,16 @@
   font-size: 11px;
   color: #a9c7df;
   white-space: nowrap;
+}
+
+.mobile-recent-msg {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  color: #a8c8df;
+}
+
+.mobile-recent-msg.success {
+  color: #9ff7c8;
 }
 
 .shoot-type-label {
@@ -888,6 +915,12 @@
     align-items: flex-start;
   }
 
+  .recent-status-row {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+
   .section-head-actions {
     width: 100%;
     justify-content: flex-end;
@@ -936,6 +969,84 @@
 
 .rawlog-page {
   gap: 12px;
+}
+
+.mobile-settings-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.mobile-launcher-group {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-launcher-label {
+  font-size: 13px;
+  color: #bdd9ee;
+  font-weight: 600;
+}
+
+.mobile-launcher-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-launcher-btn {
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(88, 224, 255, 0.4);
+  background: rgba(18, 37, 67, 0.8);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mobile-launcher-btn.active {
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.28), rgba(255, 85, 199, 0.22));
+  border-color: rgba(88, 224, 255, 0.75);
+  box-shadow: 0 0 12px rgba(88, 224, 255, 0.28);
+}
+
+.mobile-connect-btn {
+  min-height: 54px;
+  border-radius: 14px;
+  border: 1px solid rgba(88, 224, 255, 0.62);
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.26), rgba(255, 85, 199, 0.2));
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.mobile-connect-btn:disabled {
+  opacity: 0.7;
+}
+
+.mobile-connect-help {
+  font-size: 12px;
+  color: #9fd4eb;
+  margin-top: -2px;
+}
+
+.mobile-status-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(88, 224, 255, 0.24);
+  background: rgba(10, 19, 35, 0.45);
+}
+
+.mobile-error-box {
+  font-size: 12px;
+  color: #ff9b9b;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 116, 116, 0.4);
+  background: rgba(55, 14, 24, 0.45);
 }
 
 .rawlog-header {

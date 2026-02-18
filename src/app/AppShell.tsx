@@ -115,6 +115,23 @@ function formatMaybe(value: number, hasData: boolean, digits = 2): string {
   return Number(value.toFixed(digits)).toString()
 }
 
+function toJapaneseErrorMessage(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('bbp device not found') || m.includes('device not found')) {
+    return 'BBPが見つかりません。ベイバトルパスを長押ししてから再度お試しください。'
+  }
+  if (m.includes('not implemented on ios') || m.includes('plugin is not implemented')) {
+    return 'Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。'
+  }
+  if (m.includes('failed to connect') || m.includes('gatt')) {
+    return '接続に失敗しました。BBPを長押ししてからもう一度お試しください。'
+  }
+  if (m.includes('notavailableerror') || m.includes('bluetooth is not available')) {
+    return 'この端末ではBluetooth接続が利用できません。'
+  }
+  return message
+}
+
 function summarizeFeature(
   shots: PersistentShot[],
   key: keyof ShotFeatures,
@@ -151,7 +168,9 @@ export function AppShell() {
   const [isMobileLayout, setIsMobileLayout] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
   )
-  const [activeMobilePage, setActiveMobilePage] = useState(1)
+  const [activeMobilePage, setActiveMobilePage] = useState(0)
+  const [recentNotice, setRecentNotice] = useState<string | null>(null)
+  const [sessionShotCount, setSessionShotCount] = useState(0)
   const mobilePagerRef = useRef<HTMLDivElement | null>(null)
 
   const isBayAttached = bleUi.connected && bleUi.isBeyAttached
@@ -166,7 +185,7 @@ export function AppShell() {
     const onChange = (event: MediaQueryListEvent) => {
       setIsMobileLayout(event.matches)
       if (!event.matches) {
-        setActiveMobilePage(1)
+        setActiveMobilePage(0)
       }
     }
     media.addEventListener('change', onChange)
@@ -184,6 +203,14 @@ export function AppShell() {
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
+  }, [isMobileLayout])
+
+  useEffect(() => {
+    if (!isMobileLayout) return
+    const el = mobilePagerRef.current
+    if (!el) return
+    el.scrollTo({ left: 0, behavior: 'auto' })
+    setActiveMobilePage(0)
   }, [isMobileLayout])
 
   const moveToMobilePage = (page: number) => {
@@ -210,6 +237,8 @@ export function AppShell() {
         }))
       },
       onShot: (snapshot: ShotSnapshot) => {
+        setSessionShotCount((prev) => prev + 1)
+        setRecentNotice(null)
         setBleUi((prev) => ({
           ...prev,
           lastError: null,
@@ -256,7 +285,7 @@ export function AppShell() {
       },
       onError: (error: ProtocolError) => {
         const msg = error.detail ? `${error.message}: ${error.detail}` : error.message
-        setBleUi((prev) => ({ ...prev, lastError: msg }))
+        setBleUi((prev) => ({ ...prev, lastError: toJapaneseErrorMessage(msg) }))
         setViewState(storeRef.current.setError(error))
       },
       onRaw: (packet) => {
@@ -415,10 +444,16 @@ export function AppShell() {
     setBleUi((prev) => ({ ...prev, lastError: null, connecting: true }))
     try {
       await bleRef.current.connect()
+      setSessionShotCount(0)
+      setRecentNotice('接続できました')
+      if (isMobileLayout) {
+        moveToMobilePage(1)
+        setActiveMobilePage(1)
+      }
     } catch (error) {
       setBleUi((prev) => ({
         ...prev,
-        lastError: error instanceof Error ? error.message : String(error),
+        lastError: toJapaneseErrorMessage(error instanceof Error ? error.message : String(error)),
       }))
     } finally {
       setBleUi((prev) => ({ ...prev, connecting: false }))
@@ -433,6 +468,8 @@ export function AppShell() {
     }))
     try {
       bleRef.current.disconnect()
+      setRecentNotice(null)
+      setSessionShotCount(0)
     } finally {
       setBleUi((prev) => ({
         ...prev,
@@ -469,13 +506,45 @@ export function AppShell() {
     />
   )
 
+  const mobileGuideMessage = bleUi.connected && sessionShotCount === 0
+    ? 'ベイを装着して、シュートしてください。連続してシュートできます。'
+    : null
+
   const recentNode = (
     <section className="section-shell recent-shell">
-      <SectionHeader
-        en="RECENT"
-        title="直近のシュート"
-        description="いまの1本を表示"
-      />
+      <div className="section-head-row recent-head-row">
+        <SectionHeader
+          en="RECENT"
+          title="直近のシュート"
+          description="いまの1本を表示"
+        />
+        <div className="recent-status-row" aria-label="直近画面ステータス">
+          <div className="status-item compact">
+            <span
+              className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`}
+            />
+            <span>
+              {bleUi.connecting
+                ? '接続中...'
+                : bleUi.disconnecting
+                  ? '切断中...'
+                  : bleUi.connected
+                    ? 'BBP 接続中'
+                    : 'BBP 未接続'}
+            </span>
+          </div>
+          <div className="status-item compact">
+            <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
+            <span>{bleUi.connected ? (isBayAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'}</span>
+          </div>
+          {bleUi.lastError ? (
+            <div className="status-item compact">
+              <span className="status-dot on error" />
+              <span>通信エラー</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
       <div className="current-section">
         <NeonPanel className="current-left">
           <article className="main-card">
@@ -534,6 +603,8 @@ export function AppShell() {
               <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
             </div>
           </div>
+          {recentNotice ? <div className="mobile-recent-msg success">{recentNotice}</div> : null}
+          {mobileGuideMessage ? <div className="mobile-recent-msg">{mobileGuideMessage}</div> : null}
           <SegmentedToggle
             value={currentChartTarget}
             onChange={setCurrentChartTarget}
@@ -756,12 +827,71 @@ export function AppShell() {
   )
 
   if (isMobileLayout) {
+    const actionLabel = bleUi.connecting
+      ? '接続中...'
+      : bleUi.disconnecting
+        ? '切断中...'
+        : bleUi.connected
+          ? '切断する'
+          : '接続する'
+    const connectionLabel = bleUi.connecting
+      ? 'BBP 接続中...'
+      : bleUi.disconnecting
+        ? 'BBP 切断中...'
+        : bleUi.connected
+          ? 'BBP 接続中'
+          : 'BBP 未接続'
+    const attachLabel = bleUi.connected ? (isBayAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'
+
     return (
       <main className="layout app-mobile app-compact neon-theme mobile-shell">
         <div className="mobile-pager" ref={mobilePagerRef}>
           <section className="mobile-page">
-            <SectionHeader en="SETTINGS" title="設定・接続" description="接続状態とランチャー選択" />
-            {headerNode}
+            <SectionHeader en="SETTINGS" title="設定・接続" description="ランチャー選択とBBP接続" />
+            <NeonPanel className="mobile-settings-panel">
+              <div className="mobile-launcher-group">
+                <div className="mobile-launcher-label">ランチャーを選んでください</div>
+                <div className="mobile-launcher-buttons">
+                  {LAUNCHER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`mobile-launcher-btn ${launcherType === opt.value ? 'active' : ''}`}
+                      onClick={() => setLauncherType(opt.value)}
+                      aria-pressed={launcherType === opt.value}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                className="mobile-connect-btn"
+                onClick={bleUi.connected ? handleDisconnect : () => void handleConnect()}
+                type="button"
+                disabled={bleUi.connecting || bleUi.disconnecting}
+              >
+                {actionLabel}
+              </button>
+
+              {bleUi.connecting ? (
+                <div className="mobile-connect-help">ベイバトルパスを長押ししてください</div>
+              ) : null}
+
+              <div className="mobile-status-box">
+                <div className="status-item">
+                  <span className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`} />
+                  <span>{connectionLabel}</span>
+                </div>
+                <div className="status-item">
+                  <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
+                  <span>{attachLabel}</span>
+                </div>
+              </div>
+
+              {bleUi.lastError ? <div className="mobile-error-box">{bleUi.lastError}</div> : null}
+            </NeonPanel>
           </section>
           <section className="mobile-page">{recentNode}</section>
           <section className="mobile-page">{historyNode}</section>

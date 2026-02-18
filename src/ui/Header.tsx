@@ -100,6 +100,7 @@ export function Header({
           </div>
         </div>
       </div>
+      {connecting ? <div className="hint-line">ベイバトルパスを長押ししてください</div> : null}
       {lastError ? (
         <div className="hint-line error">{lastError}</div>
       ) : null}
