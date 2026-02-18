@@ -6,14 +6,29 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:pages": "VITE_BASE_PATH=/BeyMeter/ tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:pages": "VITE_BASE_PATH=/BeyMeter/ vite preview",
+    "cap:sync": "pnpm exec cap sync",
+    "cap:open:ios": "pnpm exec cap open ios",
+    "cap:open:android": "pnpm exec cap open android",
+    "ios:add": "pnpm exec cap add ios",
+    "ios:sync": "pnpm run build && pnpm exec cap sync ios",
+    "ios:open": "pnpm exec cap open ios",
+    "android:add": "pnpm exec cap add android",
+    "android:sync": "pnpm run build && pnpm exec cap sync android",
+    "android:open": "pnpm exec cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.1.0",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",

@@ -8,11 +8,12 @@ export const METRIC_LABELS: Record<
   | 't_50'
   | 'slope_max'
   | 'auc_0_peak'
-  | 'smoothness'
   | 'spike_score'
-  | 'alpha'
-  | 'beta'
-  | 'maxTau',
+  | 'maxTau'
+  | 'early_input_ratio'
+  | 'late_input_ratio'
+  | 'peak_input_time'
+  | 'input_stability',
   MetricHelp
 > = {
   t_peak: {
@@ -47,14 +48,6 @@ export const METRIC_LABELS: Record<
       '改善: ピークまでの加速を切らさず、出力を繋ぐ',
     ],
   },
-  smoothness: {
-    label: 'smoothness',
-    lines: [
-      '意味: 波形のガタつき度合い（小さいほど滑らか）',
-      '大: ばらつき・ブレ大 / 小: 再現性が高い',
-      '改善: 手首のブレを減らし、一定軌道で引く',
-    ],
-  },
   spike_score: {
     label: 'spike_score',
     lines: [
@@ -71,20 +64,36 @@ export const METRIC_LABELS: Record<
       '注意: 単発で断定せず、複数回の傾向で判断',
     ],
   },
-  alpha: {
-    label: 'α（線形減衰）',
+  early_input_ratio: {
+    label: 'early_input_ratio',
     lines: [
-      '意味: 減速区間の形から推定した摩擦傾向',
-      '大: 摩擦強めで減速しやすい / 小: 摩擦小さめ',
-      '注意: ベイ＋環境の推定。単発断定はしない',
+      '意味: 前半入力比率（序盤に入力が集中した割合）',
+      '大: 引き始め集中 / 小: 入力が後半寄り',
+      '改善: 一定入力型を狙うなら前半偏重を抑える',
     ],
   },
-  beta: {
-    label: 'β（高速域減衰）',
+  late_input_ratio: {
+    label: 'late_input_ratio',
     lines: [
-      '意味: 減速区間の形から推定した空力傾向',
-      '大: 空気抵抗が強め / 小: 抵抗が小さめ',
-      '注意: ベイ＋環境の推定。傾向比較に使う',
+      '意味: 後半入力比率（ピーク直前の入力割合）',
+      '大: 尻上がり型の傾向 / 小: 前半で入力を使い切る傾向',
+      '改善: 目標帯域に合わせて後半の伸びを調整',
+    ],
+  },
+  peak_input_time: {
+    label: 'peak_input_time',
+    lines: [
+      '意味: 入力加速が最大になった時刻(ms)',
+      '大: 後半で入力ピーク / 小: 早い段階で入力ピーク',
+      '改善: 高い帯域を狙う時はピークが遅すぎないよう調整',
+    ],
+  },
+  input_stability: {
+    label: 'input_stability',
+    lines: [
+      '意味: 入力の安定度（小さいほど一定）',
+      '大: 力の波が大きい / 小: 一定の力で引けている',
+      '改善: 速度変動を減らし、引き切りまで一定を意識',
     ],
   },
 }

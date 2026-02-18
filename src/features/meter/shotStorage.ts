@@ -3,6 +3,7 @@ import type { ShotFeatures } from './shotFeatures'
 import type { DecaySegment } from '../../analysis/decayDetect'
 import type { FrictionFitResult } from '../../analysis/frictionFit'
 import type { TorqueFeatures, TorqueSeries } from '../../analysis/torque'
+import type { LauncherType } from './shootType'
 
 const DB_NAME = 'beymeter-db'
 const DB_VERSION = 1
@@ -14,6 +15,7 @@ export type ChosenSpType = 'your' | 'est' | 'max'
 export interface PersistentShot {
   id: string
   beySessionId?: string
+  launcherType?: LauncherType
   createdAt: number
   yourSp: number
   estSp: number

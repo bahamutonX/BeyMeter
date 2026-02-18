@@ -10,7 +10,7 @@ import { NeonPanel } from '../ui/NeonPanel'
 import { SectionHeader } from '../ui/SectionHeader'
 import { SegmentedToggle } from '../ui/SegmentedToggle'
 import { MetricLabel } from '../ui/MetricLabel'
-import { computeShotFeatures } from '../features/meter/shotFeatures'
+import { computeShotFeatures, type ShotFeatures } from '../features/meter/shotFeatures'
 import { clearShots, listShots, saveShot, type PersistentShot } from '../features/meter/shotStorage'
 import { BAND_DEFS, buildBandStats } from '../features/meter/statsBands'
 import { detectDecaySegment } from '../analysis/decayDetect'
@@ -19,11 +19,17 @@ import { computeTorque } from '../analysis/torque'
 import { findFirstPeakIndex } from '../analysis/firstPeak'
 import { METRIC_LABELS } from '../ui/metricLabels'
 import { aggregateSeries } from '../analysis/aggregateSeries'
+import {
+  classifyShootType,
+  LAUNCHER_OPTIONS,
+  launcherLabel,
+  type LauncherType,
+} from '../features/meter/shootType'
 
 const RECENT_X_MAX_MS = 400
 const RECENT_Y_MAX_SP = 12000
 const RECENT_Y_MAX_TAU = 250
-const BEY_SESSION_ID_KEY = 'beymeter.currentBeySessionId'
+const LAUNCHER_TYPE_KEY = 'beymeter.launcherType'
 
 type ChartTarget = 'sp' | 'tau'
 type ChartMode = 'avg' | 'overlay'
@@ -36,14 +42,12 @@ interface BleUiState {
   lastError: string | null
 }
 
-function getOrCreateInitialSessionId(): string {
-  const existing = window.localStorage.getItem(BEY_SESSION_ID_KEY)
-  if (existing) {
-    return existing
+function getInitialLauncherType(): LauncherType {
+  const saved = window.localStorage.getItem(LAUNCHER_TYPE_KEY)
+  if (saved === 'string' || saved === 'winder' || saved === 'longWinder') {
+    return saved
   }
-  const created = `bey-${Date.now()}`
-  window.localStorage.setItem(BEY_SESSION_ID_KEY, created)
-  return created
+  return 'string'
 }
 
 function ensureProfile(profile: ShotProfile): ShotProfile {
@@ -111,30 +115,17 @@ function formatMaybe(value: number, hasData: boolean, digits = 2): string {
   return Number(value.toFixed(digits)).toString()
 }
 
-function classifyDecayType(
-  alpha: number,
-  beta: number,
-  alphaBandMedian: number,
-  betaBandMedian: number,
-  smoothnessMean: number,
-  smoothBandMedian: number,
-  hasData: boolean,
-): string[] {
-  if (!hasData) return ['—']
-  const alphaHigh = alpha >= alphaBandMedian * 1.1
-  const alphaLow = alpha <= alphaBandMedian * 0.9
-  const betaHigh = Math.abs(beta) >= Math.abs(betaBandMedian) * 1.1
-  const betaLow = Math.abs(beta) <= Math.abs(betaBandMedian) * 0.9
-  const smoothBad = smoothnessMean >= smoothBandMedian * 1.1
-
-  const tags: string[] = []
-  if (alphaLow && betaLow) tags.push('持続型（減衰弱め）')
-  else if (alphaHigh && betaLow) tags.push('ベアリング抵抗大（持続弱め）')
-  else if (alphaLow && betaHigh) tags.push('高速失速型（空気抵抗/ブレ）')
-  else if (alphaHigh && betaHigh) tags.push('減衰強め型')
-  if (smoothBad) tags.push('ブレ注意')
-
-  return tags.length > 0 ? tags : ['標準域']
+function summarizeFeature(
+  shots: PersistentShot[],
+  key: keyof ShotFeatures,
+): { mean: number; p50: number } {
+  const values = shots
+    .map((s) => s.features?.[key])
+    .filter((x): x is number => Number.isFinite(x))
+  return {
+    mean: Number(mean(values).toFixed(3)),
+    p50: Number(median(values).toFixed(3)),
+  }
 }
 
 export function AppShell() {
@@ -150,10 +141,8 @@ export function AppShell() {
   })
   const [viewState, setViewState] = useState<MeterViewState>(storeRef.current.getState())
   const [persistedShots, setPersistedShots] = useState<PersistentShot[]>([])
-  const [currentBeySessionId, setCurrentBeySessionId] = useState<string>(() =>
-    getOrCreateInitialSessionId(),
-  )
-  const currentBeySessionIdRef = useRef(currentBeySessionId)
+  const [launcherType, setLauncherType] = useState<LauncherType>(() => getInitialLauncherType())
+  const launcherTypeRef = useRef(launcherType)
 
   const [selectedBandId, setSelectedBandId] = useState(BAND_DEFS[0].id)
   const [currentChartTarget, setCurrentChartTarget] = useState<ChartTarget>('sp')
@@ -163,9 +152,9 @@ export function AppShell() {
   const isBayAttached = bleUi.connected && bleUi.isBeyAttached
 
   useEffect(() => {
-    currentBeySessionIdRef.current = currentBeySessionId
-    window.localStorage.setItem(BEY_SESSION_ID_KEY, currentBeySessionId)
-  }, [currentBeySessionId])
+    launcherTypeRef.current = launcherType
+    window.localStorage.setItem(LAUNCHER_TYPE_KEY, launcherType)
+  }, [launcherType])
 
   useEffect(() => {
     const ble = bleRef.current
@@ -202,7 +191,7 @@ export function AppShell() {
 
           const shot: PersistentShot = {
             id: `${snapshot.receivedAt}-${Math.random().toString(36).slice(2, 8)}`,
-            beySessionId: currentBeySessionIdRef.current,
+            launcherType: launcherTypeRef.current,
             createdAt: snapshot.receivedAt,
             yourSp: snapshot.yourSp,
             estSp: snapshot.estSp,
@@ -219,7 +208,7 @@ export function AppShell() {
           await saveShot(shot)
           const loaded = (await listShots()).map((s) => ({
             ...s,
-            beySessionId: s.beySessionId ?? currentBeySessionIdRef.current,
+            launcherType: s.launcherType ?? 'string',
             profile: ensureProfile(s.profile),
           }))
           setPersistedShots(loaded)
@@ -234,11 +223,12 @@ export function AppShell() {
         void packet
       },
     })
+    ble.autoReconnectLoop(2500)
 
     void (async () => {
       const loaded = (await listShots()).map((s) => ({
         ...s,
-        beySessionId: s.beySessionId ?? currentBeySessionIdRef.current,
+        launcherType: s.launcherType ?? 'string',
         profile: ensureProfile(s.profile),
       }))
       const recalculated = loaded.map((s) => {
@@ -271,6 +261,14 @@ export function AppShell() {
     () => (latest ? persistedShots.find((s) => s.createdAt === latest.receivedAt) ?? null : null),
     [latest, persistedShots],
   )
+  const latestShootType = useMemo(
+    () => classifyShootType(latestPersisted?.features),
+    [latestPersisted?.features],
+  )
+  const latestLauncherText = useMemo(
+    () => launcherLabel((latestPersisted?.launcherType ?? launcherType) as LauncherType),
+    [latestPersisted?.launcherType, launcherType],
+  )
   const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
   const isYourSuspicious = useMemo(() => isSuspectShot(latest), [latest])
   const latestPeakTimeMs = useMemo(
@@ -300,51 +298,40 @@ export function AppShell() {
       return true
     })
   }, [persistedShots, selectedBandId])
-
-  const currentSessionShots = useMemo(
-    () => persistedShots.filter((s) => (s.beySessionId ?? currentBeySessionId) === currentBeySessionId),
-    [currentBeySessionId, persistedShots],
-  )
-  const selectedBandSessionShots = useMemo(() => {
-    const def = BAND_DEFS.find((d) => d.id === selectedBandId)
-    if (!def) return []
-    return currentSessionShots.filter((s) => {
-      const score = s.estSp
-      if (score < def.min) return false
-      if (def.maxExclusive !== null && score >= def.maxExclusive) return false
-      return true
-    })
-  }, [currentSessionShots, selectedBandId])
-  const sessionIdsOrdered = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          persistedShots
-            .map((s) => s.beySessionId ?? currentBeySessionId)
-            .sort((a, b) => a.localeCompare(b)),
-        ),
-      ),
-    [currentBeySessionId, persistedShots],
-  )
-  const currentSessionIndex = Math.max(1, sessionIdsOrdered.indexOf(currentBeySessionId) + 1)
-
-  const selectedBandFriction = useMemo(() => {
-    const alpha = selectedBandSessionShots
-      .map((s) => s.frictionFit?.alpha)
-      .filter((x): x is number => x !== undefined)
-    const beta = selectedBandSessionShots
-      .map((s) => s.frictionFit?.beta)
-      .filter((x): x is number => x !== undefined)
-    const maxTau = selectedBandSessionShots
+  const selectedBandMaxTau = useMemo(() => {
+    const values = selectedBandShots
       .map((s) => s.torqueFeatures?.maxInputTau ?? s.torqueFeatures?.maxTau)
       .filter((x): x is number => x !== undefined)
-    return {
-      alphaMean: Number(mean(alpha).toFixed(6)),
-      betaMean: Number(mean(beta).toFixed(9)),
-      maxTauMean: Number(mean(maxTau).toFixed(6)),
-      nFit: alpha.length,
+    return Number(mean(values).toFixed(6))
+  }, [selectedBandShots])
+  const launcherCountByType = useMemo(() => {
+    return LAUNCHER_OPTIONS.map((opt) => {
+      const count = selectedBandShots.filter((s) => (s.launcherType ?? 'string') === opt.value).length
+      return { ...opt, count }
+    })
+  }, [selectedBandShots])
+  const selectedBandShootType = useMemo(() => {
+    const buckets = new Map<string, number>()
+    for (const shot of selectedBandShots) {
+      const type = classifyShootType(shot.features)
+      buckets.set(type, (buckets.get(type) ?? 0) + 1)
     }
-  }, [selectedBandSessionShots])
+    if (buckets.size === 0) return '—'
+    return [...buckets.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  }, [selectedBandShots])
+  const selectedBandShootFeatures = useMemo(() => {
+    return {
+      t50: summarizeFeature(selectedBandShots, 't_50'),
+      tPeak: summarizeFeature(selectedBandShots, 't_peak'),
+      slopeMax: summarizeFeature(selectedBandShots, 'slope_max'),
+      auc0Peak: summarizeFeature(selectedBandShots, 'auc_0_peak'),
+      spikeScore: summarizeFeature(selectedBandShots, 'spike_score'),
+      earlyInputRatio: summarizeFeature(selectedBandShots, 'early_input_ratio'),
+      lateInputRatio: summarizeFeature(selectedBandShots, 'late_input_ratio'),
+      peakInputTime: summarizeFeature(selectedBandShots, 'peak_input_time'),
+      inputStability: summarizeFeature(selectedBandShots, 'input_stability'),
+    }
+  }, [selectedBandShots])
 
   const selectedBandStat = bandStats[selectedBandId]
   const hasSelectedBandData = (selectedBandStat?.count ?? 0) > 0
@@ -383,50 +370,6 @@ export function AppShell() {
     () => Math.max(1, ...BAND_DEFS.map((b) => bandStats[b.id]?.count ?? 0)),
     [bandStats],
   )
-  const bandAlphaValues = useMemo(
-    () =>
-      selectedBandSessionShots
-        .map((s) => s.frictionFit?.alpha)
-        .filter((x): x is number => x !== undefined),
-    [selectedBandSessionShots],
-  )
-  const bandBetaValues = useMemo(
-    () =>
-      selectedBandSessionShots
-        .map((s) => s.frictionFit?.beta)
-        .filter((x): x is number => x !== undefined),
-    [selectedBandSessionShots],
-  )
-  const alphaBandMedian = useMemo(() => median(bandAlphaValues), [bandAlphaValues])
-  const betaBandMedian = useMemo(() => median(bandBetaValues), [bandBetaValues])
-  const smoothBandMedian = selectedBandStat?.featureSummary.smoothness.p50 ?? 0
-  const smoothnessMean = selectedBandStat?.featureSummary.smoothness.mean ?? 0
-  const beyTypeTags = useMemo(
-    () =>
-      classifyDecayType(
-        selectedBandFriction.alphaMean,
-        selectedBandFriction.betaMean,
-        alphaBandMedian,
-        betaBandMedian,
-        smoothnessMean,
-        smoothBandMedian,
-        selectedBandFriction.nFit > 0 && hasSelectedBandData,
-      ),
-    [
-      alphaBandMedian,
-      betaBandMedian,
-      hasSelectedBandData,
-      selectedBandFriction.alphaMean,
-      selectedBandFriction.betaMean,
-      selectedBandFriction.nFit,
-      smoothBandMedian,
-      smoothnessMean,
-    ],
-  )
-  const beyTypeLabel = useMemo(() => {
-    const tags = beyTypeTags.filter((t) => t !== '—').slice(0, 2)
-    return tags.length > 0 ? tags.join('、') : '—'
-  }, [beyTypeTags])
 
   async function handleConnect() {
     setBleUi((prev) => ({ ...prev, lastError: null, connecting: true }))
@@ -471,13 +414,6 @@ export function AppShell() {
     setSelectedBandId(BAND_DEFS[0].id)
   }
 
-  function handleBeySwap() {
-    const ok = window.confirm('ベイを交換しましたか？ α/β推定用のデータを新しくします')
-    if (!ok) return
-    const newSessionId = `bey-${Date.now()}`
-    setCurrentBeySessionId(newSessionId)
-  }
-
   return (
     <main className="layout app-mobile app-compact neon-theme">
       <Header
@@ -486,6 +422,9 @@ export function AppShell() {
         disconnecting={bleUi.disconnecting}
         beyAttached={isBayAttached}
         lastError={bleUi.lastError}
+        launcherType={launcherType}
+        launcherOptions={LAUNCHER_OPTIONS}
+        onLauncherTypeChange={setLauncherType}
         onConnect={() => void handleConnect()}
         onDisconnect={handleDisconnect}
       />
@@ -511,6 +450,10 @@ export function AppShell() {
                 )}
               </div>
               <div className="card-help">BBP本体に記録された公式値</div>
+              <div className="card-help launcher-line">ランチャー: {latest ? latestLauncherText : '--'}</div>
+              <div className="shoot-type-label">
+                シュートタイプ: {latest ? latestShootType : '--'}
+              </div>
               {isYourSuspicious ? <span className="warn-badge">異常値の可能性</span> : null}
             </article>
             <div className="sub-card-row">
@@ -608,9 +551,6 @@ export function AppShell() {
             description="過去のデータから帯域別に特徴を解析することができます"
           />
           <div className="section-head-actions">
-            <button className="mini-btn subtle history-reset-btn" onClick={handleBeySwap} type="button">
-              ベイ交換
-            </button>
             <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
               データリセット
             </button>
@@ -704,6 +644,9 @@ export function AppShell() {
               <div className="stats-col">
                 <h4>帯域のシュートパワー統計</h4>
                 <div>合計: {selectedBandShots.length}本</div>
+                <div>・ストリングランチャー: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}本</div>
+                <div>・ワインダーランチャー: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}本</div>
+                <div>・ロングワインダー: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}本</div>
                 <div>平均: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> rpm</span></> : '—'}</div>
                 <div>最高: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> rpm</span></> : '—'}</div>
                 <div>標準偏差: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : '—'}</div>
@@ -716,53 +659,53 @@ export function AppShell() {
                     <h5>シュート要素</h5>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.maxTau} />
-                      <strong>{selectedBandFriction.nFit > 0 ? `${selectedBandFriction.maxTauMean} a.u.` : '—'}</strong>
+                      <strong>{hasSelectedBandData ? `${selectedBandMaxTau} a.u.` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.t_50} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.t_50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandStat.featureSummary.t_50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.t_peak} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.t_peak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandStat.featureSummary.t_peak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.slope_max} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.slope_max.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.slope_max.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.auc_0_peak} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.auc_0_peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandStat.featureSummary.auc_0_peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
                       <MetricLabel help={METRIC_LABELS.spike_score} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.spike_score.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.spike_score.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : '—'}</strong>
                     </div>
                   </div>
 
                   <div className="detail-col">
-                    <h5>ベイブレード特性推定（ベイ＋環境）</h5>
+                    <h5>シュートタイプ判定</h5>
                     <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.alpha} />
-                      <strong>{selectedBandFriction.nFit > 0 ? selectedBandFriction.alphaMean : '—'}</strong>
+                      <MetricLabel help={METRIC_LABELS.early_input_ratio} />
+                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.beta} />
-                      <strong>{selectedBandFriction.nFit > 0 ? selectedBandFriction.betaMean : '—'}</strong>
+                      <MetricLabel help={METRIC_LABELS.late_input_ratio} />
+                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.smoothness} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.smoothness.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.smoothness.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                      <MetricLabel help={METRIC_LABELS.peak_input_time} />
+                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
-                      <span>推定本数</span>
-                      <strong>{selectedBandFriction.nFit}</strong>
+                      <MetricLabel help={METRIC_LABELS.input_stability} />
+                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : '—'}</strong>
                     </div>
                     <div className="compact-metric">
-                      <span>ベイセッション</span>
-                      <strong>#{currentSessionIndex}（n={currentSessionShots.length}）</strong>
+                      <span>選択中ランチャー</span>
+                      <strong>{launcherLabel(launcherType)}</strong>
                     </div>
-                    <div className="judge-text">ベイ＋環境判定: {beyTypeLabel}</div>
+                    <div className="judge-text">シュートタイプ判定: {selectedBandShootType}</div>
                   </div>
                 </div>
               </div>

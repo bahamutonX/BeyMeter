@@ -54,8 +54,10 @@ export function RawLogPage() {
         setState((prev) => ({ ...prev, error: msg }))
       },
     })
+    ble.autoReconnectLoop(2500)
 
     return () => {
+      ble.stopAutoReconnectLoop()
       ble.disconnect()
     }
   }, [])

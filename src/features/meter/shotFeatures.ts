@@ -14,6 +14,10 @@ export interface ShotFeatures {
   spike_score: number
   smoothness: number
   noise_score: number
+  early_input_ratio: number
+  late_input_ratio: number
+  peak_input_time: number
+  input_stability: number
 }
 
 function safeDiv(a: number, b: number): number {
@@ -63,6 +67,10 @@ export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
       spike_score: 0,
       smoothness: 0,
       noise_score: 0,
+      early_input_ratio: 0,
+      late_input_ratio: 0,
+      peak_input_time: 0,
+      input_stability: 0,
     }
   }
 
@@ -140,6 +148,47 @@ export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
   }
   const noise_score = safeDiv(noiseCount, firstPeakIndex + 1)
 
+  const accel: number[] = []
+  const accelTime: number[] = []
+  for (let i = 1; i <= firstPeakIndex; i += 1) {
+    const dt = relTMs[i] - relTMs[i - 1]
+    if (dt <= 0) continue
+    const a = (sp[i] - sp[i - 1]) / dt
+    const pos = Math.max(0, a)
+    accel.push(pos)
+    accelTime.push(relTMs[i])
+  }
+  const totalInput = accel.reduce((sum, a) => sum + a, 0)
+  const earlyWindowMs = 80
+  const earlyInput = accel.reduce((sum, a, i) => {
+    return accelTime[i] <= earlyWindowMs ? sum + a : sum
+  }, 0)
+  const lateStartMs = t_peak * 0.67
+  const lateInput = accel.reduce((sum, a, i) => {
+    return accelTime[i] >= lateStartMs ? sum + a : sum
+  }, 0)
+  const early_input_ratio = safeDiv(earlyInput, totalInput)
+  const late_input_ratio = safeDiv(lateInput, totalInput)
+  let peak_input_time = 0
+  if (accel.length > 0) {
+    let maxA = -Infinity
+    let maxIdx = 0
+    for (let i = 0; i < accel.length; i += 1) {
+      if (accel[i] > maxA) {
+        maxA = accel[i]
+        maxIdx = i
+      }
+    }
+    peak_input_time = accelTime[maxIdx] ?? 0
+  }
+  const accelMean = safeDiv(accel.reduce((s, a) => s + a, 0), accel.length)
+  const accelStd = accel.length > 0
+    ? Math.sqrt(
+      accel.reduce((s, a) => s + (a - accelMean) ** 2, 0) / accel.length,
+    )
+    : 0
+  const input_stability = safeDiv(accelStd, accelMean)
+
   return {
     t_peak,
     first_peak_sp: Number(firstPeakSp.toFixed(2)),
@@ -153,5 +202,9 @@ export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
     spike_score: Number(spike_score.toFixed(4)),
     smoothness: Number(smoothness.toFixed(2)),
     noise_score: Number(noise_score.toFixed(4)),
+    early_input_ratio: Number(early_input_ratio.toFixed(4)),
+    late_input_ratio: Number(late_input_ratio.toFixed(4)),
+    peak_input_time: Number(peak_input_time.toFixed(2)),
+    input_stability: Number(input_stability.toFixed(4)),
   }
 }
