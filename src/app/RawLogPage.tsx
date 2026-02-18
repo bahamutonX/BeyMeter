@@ -105,7 +105,7 @@ export function RawLogPage() {
   return (
     <main className="layout app-mobile app-compact neon-theme rawlog-page">
       <NeonPanel className="rawlog-header">
-        <h1>BBP Raw Log</h1>
+        <h1>ベイバトルパス Raw Log</h1>
         <div className="rawlog-actions">
           <button
             className="mini-btn subtle"

@@ -43,12 +43,12 @@ export function Header({
   onDisconnect,
 }: HeaderProps) {
   const connectionLabel = connecting
-    ? 'BBP 接続中...'
+    ? 'ベイバトルパス 接続中...'
     : disconnecting
-      ? 'BBP 切断中...'
+      ? 'ベイバトルパス 切断中...'
     : bleConnected
-      ? 'BBP 接続中'
-      : 'BBP 未接続'
+      ? 'ベイバトルパス 接続中'
+      : 'ベイバトルパス 未接続'
   const attachLabel = bleConnected ? (beyAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'
   const actionLabel = connecting
     ? '接続中...'

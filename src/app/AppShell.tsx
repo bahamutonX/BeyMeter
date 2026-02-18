@@ -118,13 +118,13 @@ function formatMaybe(value: number, hasData: boolean, digits = 2): string {
 function toJapaneseErrorMessage(message: string): string {
   const m = message.toLowerCase()
   if (m.includes('bbp device not found') || m.includes('device not found')) {
-    return 'BBPが見つかりません。ベイバトルパスを長押ししてから再度お試しください。'
+    return 'ベイバトルパスが見つかりません。接続ボタンを押してからベイバトルパスを長押ししてください。'
   }
   if (m.includes('not implemented on ios') || m.includes('plugin is not implemented')) {
     return 'Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。'
   }
   if (m.includes('failed to connect') || m.includes('gatt')) {
-    return '接続に失敗しました。BBPを長押ししてからもう一度お試しください。'
+    return '接続に失敗しました。接続ボタンを押してからベイバトルパスを長押ししてください。'
   }
   if (m.includes('notavailableerror') || m.includes('bluetooth is not available')) {
     return 'この端末ではBluetooth接続が利用できません。'
@@ -529,8 +529,8 @@ export function AppShell() {
                 : bleUi.disconnecting
                   ? '切断中...'
                   : bleUi.connected
-                    ? 'BBP 接続中'
-                    : 'BBP 未接続'}
+                    ? 'ベイバトルパス 接続中'
+                    : 'ベイバトルパス 未接続'}
             </span>
           </div>
           <div className="status-item compact">
@@ -548,7 +548,7 @@ export function AppShell() {
       <div className="current-section">
         <NeonPanel className="current-left">
           <article className="main-card">
-            <h2>記録シュートパワー（BBP公式値）</h2>
+            <h2>記録シュートパワー（ベイバトルパス公式値）</h2>
             <div className="main-value">
               {latest ? (
                 <>
@@ -601,12 +601,12 @@ export function AppShell() {
             <div className="chart-status-meta" aria-label="接続状態">
               <span>
                 {bleUi.connecting
-                  ? 'BBP: 接続中...'
+                  ? 'ベイバトルパス: 接続中...'
                   : bleUi.disconnecting
-                    ? 'BBP: 切断中...'
+                    ? 'ベイバトルパス: 切断中...'
                     : bleUi.connected
-                      ? 'BBP: 接続中'
-                      : 'BBP: 未接続'}
+                      ? 'ベイバトルパス: 接続中'
+                      : 'ベイバトルパス: 未接続'}
               </span>
               <span>{bleUi.connected ? (isBayAttached ? 'ベイ: 装着' : 'ベイ: 未装着') : 'ベイ: 不明'}</span>
             </div>
@@ -847,19 +847,19 @@ export function AppShell() {
           ? '切断する'
           : '接続する'
     const connectionLabel = bleUi.connecting
-      ? 'BBP 接続中...'
+      ? 'ベイバトルパス 接続中...'
       : bleUi.disconnecting
-        ? 'BBP 切断中...'
+        ? 'ベイバトルパス 切断中...'
         : bleUi.connected
-          ? 'BBP 接続中'
-          : 'BBP 未接続'
+          ? 'ベイバトルパス 接続中'
+          : 'ベイバトルパス 未接続'
     const attachLabel = bleUi.connected ? (isBayAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'
 
     return (
       <main className="layout app-mobile app-compact neon-theme mobile-shell">
         <div className="mobile-pager" ref={mobilePagerRef}>
           <section className="mobile-page">
-            <SectionHeader en="SETTINGS" title="設定・接続" description="ランチャー選択とBBP接続" />
+            <SectionHeader en="SETTINGS" title="設定・接続" description="ランチャー選択とベイバトルパス接続" />
             <NeonPanel className="mobile-settings-panel">
               <div className="mobile-launcher-group">
                 <div className="mobile-launcher-label">ランチャーを選んでください</div>
