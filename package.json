@@ -21,6 +21,7 @@
     "android:open": "pnpm exec cap open android"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.1.0",
     "@capacitor/android": "^8.1.0",
     "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",

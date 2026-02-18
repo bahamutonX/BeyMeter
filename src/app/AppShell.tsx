@@ -148,6 +148,11 @@ export function AppShell() {
   const [currentChartTarget, setCurrentChartTarget] = useState<ChartTarget>('sp')
   const [bandChartTarget, setBandChartTarget] = useState<ChartTarget>('sp')
   const [bandChartMode, setBandChartMode] = useState<ChartMode>('avg')
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => window.matchMedia('(max-width: 980px)').matches,
+  )
+  const [activeMobilePage, setActiveMobilePage] = useState(1)
+  const mobilePagerRef = useRef<HTMLDivElement | null>(null)
 
   const isBayAttached = bleUi.connected && bleUi.isBeyAttached
 
@@ -155,6 +160,41 @@ export function AppShell() {
     launcherTypeRef.current = launcherType
     window.localStorage.setItem(LAUNCHER_TYPE_KEY, launcherType)
   }, [launcherType])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 980px)')
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsMobileLayout(event.matches)
+      if (!event.matches) {
+        setActiveMobilePage(1)
+      }
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileLayout) return
+    const el = mobilePagerRef.current
+    if (!el) return
+    const onScroll = () => {
+      const width = el.clientWidth || 1
+      const page = Math.round(el.scrollLeft / width)
+      setActiveMobilePage(Math.max(0, Math.min(2, page)))
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [isMobileLayout])
+
+  const moveToMobilePage = (page: number) => {
+    const el = mobilePagerRef.current
+    if (!el) return
+    const width = el.clientWidth || 1
+    el.scrollTo({
+      left: width * page,
+      behavior: 'smooth',
+    })
+  }
 
   useEffect(() => {
     const ble = bleRef.current
@@ -414,305 +454,340 @@ export function AppShell() {
     setSelectedBandId(BAND_DEFS[0].id)
   }
 
-  return (
-    <main className="layout app-mobile app-compact neon-theme">
-      <Header
-        bleConnected={bleUi.connected}
-        connecting={bleUi.connecting}
-        disconnecting={bleUi.disconnecting}
-        beyAttached={isBayAttached}
-        lastError={bleUi.lastError}
-        launcherType={launcherType}
-        launcherOptions={LAUNCHER_OPTIONS}
-        onLauncherTypeChange={setLauncherType}
-        onConnect={() => void handleConnect()}
-        onDisconnect={handleDisconnect}
-      />
+  const headerNode = (
+    <Header
+      bleConnected={bleUi.connected}
+      connecting={bleUi.connecting}
+      disconnecting={bleUi.disconnecting}
+      beyAttached={isBayAttached}
+      lastError={bleUi.lastError}
+      launcherType={launcherType}
+      launcherOptions={LAUNCHER_OPTIONS}
+      onLauncherTypeChange={setLauncherType}
+      onConnect={() => void handleConnect()}
+      onDisconnect={handleDisconnect}
+    />
+  )
 
-      <section className="section-shell recent-shell">
-        <SectionHeader
-          en="RECENT"
-          title="直近のシュート"
-          description="いまの1本を表示"
-        />
-        <div className="current-section">
-          <NeonPanel className="current-left">
-            <article className="main-card">
-              <h2>記録シュートパワー</h2>
-              <div className="main-value">
+  const recentNode = (
+    <section className="section-shell recent-shell">
+      <SectionHeader
+        en="RECENT"
+        title="直近のシュート"
+        description="いまの1本を表示"
+      />
+      <div className="current-section">
+        <NeonPanel className="current-left">
+          <article className="main-card">
+            <h2>記録シュートパワー（BBP公式値）</h2>
+            <div className="main-value">
+              {latest ? (
+                <>
+                  {latest.yourSp}
+                  <span className="value-unit">rpm</span>
+                </>
+              ) : (
+                '--'
+              )}
+            </div>
+            <div className="card-help launcher-line">ランチャー: {latest ? latestLauncherText : '--'}</div>
+            <div className="shoot-type-label">
+              シュートタイプ: {latest ? latestShootType : '--'}
+            </div>
+            {isYourSuspicious ? <span className="warn-badge">異常値の可能性</span> : null}
+          </article>
+          <div className="sub-card-row">
+            <article className="sub-card">
+              <h3>推定シュートパワー（波形補正値）</h3>
+              <div className="sub-value">
                 {latest ? (
                   <>
-                    {latest.yourSp}
+                    {latest.estSp}
                     <span className="value-unit">rpm</span>
                   </>
                 ) : (
                   '--'
                 )}
               </div>
-              <div className="card-help">BBP本体に記録された公式値</div>
-              <div className="card-help launcher-line">ランチャー: {latest ? latestLauncherText : '--'}</div>
-              <div className="shoot-type-label">
-                シュートタイプ: {latest ? latestShootType : '--'}
-              </div>
-              {isYourSuspicious ? <span className="warn-badge">異常値の可能性</span> : null}
             </article>
-            <div className="sub-card-row">
-              <article className="sub-card">
-                <h3>推定シュートパワー</h3>
-                <div className="sub-value">
-                  {latest ? (
-                    <>
-                      {latest.estSp}
-                      <span className="value-unit">rpm</span>
-                    </>
-                  ) : (
-                    '--'
-                  )}
-                </div>
-                <div className="card-help">波形から補正した実力寄りの値</div>
-              </article>
-              <article className="sub-card">
-                <h3>最大シュートパワー</h3>
-                <div className="sub-value">
-                  {latest ? (
-                    <>
-                      {latest.maxSp}
-                      <span className="value-unit">rpm</span>
-                    </>
-                  ) : (
-                    '--'
-                  )}
-                </div>
-                <div className="card-help">波形中で最も高かったピーク値</div>
-              </article>
-            </div>
-          </NeonPanel>
-
-          <NeonPanel className="current-right">
-            <div className="chart-head-row">
-              <h3>直近のシュート波形</h3>
-              <div className="shot-meta">
-                <span>ピーク: {latest ? `${latestPeakTimeMs}ms` : '--'}</span>
-                <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
+            <article className="sub-card">
+              <h3>最大シュートパワー（ピーク値）</h3>
+              <div className="sub-value">
+                {latest ? (
+                  <>
+                    {latest.maxSp}
+                    <span className="value-unit">rpm</span>
+                  </>
+                ) : (
+                  '--'
+                )}
               </div>
+            </article>
+          </div>
+        </NeonPanel>
+
+        <NeonPanel className="current-right">
+          <div className="chart-head-row">
+            <h3>直近のシュート波形</h3>
+            <div className="shot-meta">
+              <span>ピーク: {latest ? `${latestPeakTimeMs}ms` : '--'}</span>
+              <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
             </div>
+          </div>
+          <SegmentedToggle
+            value={currentChartTarget}
+            onChange={setCurrentChartTarget}
+            options={[
+              { value: 'sp', label: 'シュートパワー' },
+              { value: 'tau', label: 'トルク (a.u.)' },
+            ]}
+          />
+          {currentChartTarget === 'sp' ? (
+            <ProfileChart
+              profile={latestProfile}
+              peakIndex={peakIndex}
+              timeMode="start"
+              yLabel="シュートパワー (rpm)"
+              fixedXMaxMs={RECENT_X_MAX_MS}
+              fixedYMax={RECENT_Y_MAX_SP}
+              fixedXTicks={[0, 100, 200, 300, 400]}
+              fixedYTicks={[0, 3000, 6000, 9000, 12000]}
+            />
+          ) : latestTorqueSeries ? (
+            <ProfileChart
+              profile={{
+                profilePoints: latestTorqueSeries.tMs.map((tMs, i) => ({
+                  tMs,
+                  sp: latestTorqueSeries.tau[i] ?? 0,
+                  nRefs: 0,
+                  dtMs: i > 0 ? tMs - latestTorqueSeries.tMs[i - 1] : tMs,
+                })),
+                tMs: latestTorqueSeries.tMs,
+                sp: latestTorqueSeries.tau,
+                nRefs: latestTorqueSeries.tau.map(() => 0),
+              }}
+              peakIndex={Math.max(0, latestTorqueSeries.tau.findIndex((x) => x === Math.max(...latestTorqueSeries.tau)))}
+              timeMode="start"
+              yLabel="入力トルク (推定, a.u.)"
+              fixedXMaxMs={RECENT_X_MAX_MS}
+              fixedYMax={RECENT_Y_MAX_TAU}
+              fixedXTicks={[0, 100, 200, 300, 400]}
+              fixedYTicks={[0, 50, 100, 150, 200, 250]}
+            />
+          ) : (
+            <div className="empty">推定トルク (a.u.): --</div>
+          )}
+        </NeonPanel>
+      </div>
+    </section>
+  )
+
+  const historyNode = (
+    <section className="section-shell history-shell">
+      <div className="section-head-row">
+        <SectionHeader
+          en="HISTORY"
+          title="履歴と分析"
+          description="過去のデータから帯域別に特徴を解析することができます"
+        />
+        <div className="section-head-actions">
+          <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
+            データリセット
+          </button>
+        </div>
+      </div>
+      <div className="history-section">
+        <NeonPanel className="history-left">
+          <div className="panel-head">
+            <h3>シュートパワー帯域</h3>
+          </div>
+          <ul className="band-list compact">
+            {BAND_DEFS.map((band) => {
+              const stat = bandStats[band.id]
+              const active = selectedBandId === band.id
+              const count = stat?.count ?? 0
+              const ratio = Math.round((count / maxBandCount) * 100)
+              return (
+                <li key={band.id}>
+                  <button className={`band-item ${active ? 'active' : ''}`} onClick={() => setSelectedBandId(band.id)} type="button">
+                    <span className="band-bar" style={{ width: `${ratio}%` }} />
+                    <span>
+                      {band.label}
+                      <span className="inline-unit"> rpm</span>
+                    </span>
+                    <span>{count}件</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="history-summary-row history-summary-left">
+            シュートパワー統計: 合計 {historySummary.total}本 / 平均 {historySummary.avg}<span className="inline-unit"> rpm</span> / 最高 {historySummary.max}<span className="inline-unit"> rpm</span> / SD {historySummary.stddev}
+          </div>
+        </NeonPanel>
+
+        <NeonPanel className="history-right">
+          <div className="chart-head-row">
+            <h3>
+              シュート波形：帯域{selectedBandId}
+              <span className="inline-unit"> rpm</span>
+            </h3>
+            <div className="shot-meta">
+              <span>ピーク(平均): {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : '--'}</span>
+              <span>
+                {bandChartTarget === 'sp' ? '最大シュートパワー(平均): ' : '最大トルク(平均): '}
+                {selectedBandChartMeta
+                  ? `${bandChartTarget === 'sp'
+                    ? Math.round(selectedBandChartMeta.maxValue)
+                    : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'a.u.'}`
+                  : '--'}
+              </span>
+            </div>
+          </div>
+          <div className="segment-row">
             <SegmentedToggle
-              value={currentChartTarget}
-              onChange={setCurrentChartTarget}
+              value={bandChartTarget}
+              onChange={setBandChartTarget}
               options={[
                 { value: 'sp', label: 'シュートパワー' },
                 { value: 'tau', label: 'トルク (a.u.)' },
               ]}
             />
-            {currentChartTarget === 'sp' ? (
-              <ProfileChart
-                profile={latestProfile}
-                peakIndex={peakIndex}
-                timeMode="start"
-                yLabel="シュートパワー (rpm)"
-                fixedXMaxMs={RECENT_X_MAX_MS}
-                fixedYMax={RECENT_Y_MAX_SP}
-                fixedXTicks={[0, 100, 200, 300, 400]}
-                fixedYTicks={[0, 3000, 6000, 9000, 12000]}
-              />
-            ) : latestTorqueSeries ? (
-              <ProfileChart
-                profile={{
-                  profilePoints: latestTorqueSeries.tMs.map((tMs, i) => ({
-                    tMs,
-                    sp: latestTorqueSeries.tau[i] ?? 0,
-                    nRefs: 0,
-                    dtMs: i > 0 ? tMs - latestTorqueSeries.tMs[i - 1] : tMs,
-                  })),
-                  tMs: latestTorqueSeries.tMs,
-                  sp: latestTorqueSeries.tau,
-                  nRefs: latestTorqueSeries.tau.map(() => 0),
-                }}
-                peakIndex={Math.max(0, latestTorqueSeries.tau.findIndex((x) => x === Math.max(...latestTorqueSeries.tau)))}
-                timeMode="start"
-                yLabel="入力トルク (推定, a.u.)"
-                fixedXMaxMs={RECENT_X_MAX_MS}
-                fixedYMax={RECENT_Y_MAX_TAU}
-                fixedXTicks={[0, 100, 200, 300, 400]}
-                fixedYTicks={[0, 50, 100, 150, 200, 250]}
-              />
-            ) : (
-              <div className="empty">推定トルク (a.u.): --</div>
-            )}
-          </NeonPanel>
-        </div>
-      </section>
-
-      <section className="section-shell history-shell">
-        <div className="section-head-row">
-          <SectionHeader
-            en="HISTORY"
-            title="履歴と分析"
-            description="過去のデータから帯域別に特徴を解析することができます"
-          />
-          <div className="section-head-actions">
-            <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
-              データリセット
-            </button>
-          </div>
-        </div>
-        <div className="history-section">
-          <NeonPanel className="history-left">
-            <div className="panel-head">
-              <h3>シュートパワー帯域</h3>
-            </div>
-            <ul className="band-list compact">
-              {BAND_DEFS.map((band) => {
-                const stat = bandStats[band.id]
-                const active = selectedBandId === band.id
-                const count = stat?.count ?? 0
-                const ratio = Math.round((count / maxBandCount) * 100)
-                return (
-                  <li key={band.id}>
-                    <button className={`band-item ${active ? 'active' : ''}`} onClick={() => setSelectedBandId(band.id)} type="button">
-                      <span className="band-bar" style={{ width: `${ratio}%` }} />
-                      <span>
-                        {band.label}
-                        <span className="inline-unit"> rpm</span>
-                      </span>
-                      <span>{count}件</span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-            <div className="history-summary-row history-summary-left">
-              シュートパワー統計: 合計 {historySummary.total}本 / 平均 {historySummary.avg}<span className="inline-unit"> rpm</span> / 最高 {historySummary.max}<span className="inline-unit"> rpm</span> / SD {historySummary.stddev}
-            </div>
-          </NeonPanel>
-
-          <NeonPanel className="history-right">
-            <div className="chart-head-row">
-              <h3>
-                シュート波形：帯域{selectedBandId}
-                <span className="inline-unit"> rpm</span>
-              </h3>
-              <div className="shot-meta">
-                <span>ピーク(平均): {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : '--'}</span>
-                <span>
-                  {bandChartTarget === 'sp' ? '最大シュートパワー(平均): ' : '最大トルク(平均): '}
-                  {selectedBandChartMeta
-                    ? `${bandChartTarget === 'sp'
-                      ? Math.round(selectedBandChartMeta.maxValue)
-                      : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'a.u.'}`
-                    : '--'}
-                </span>
-              </div>
-            </div>
-            <div className="segment-row">
-              <SegmentedToggle
-                value={bandChartTarget}
-                onChange={setBandChartTarget}
-                options={[
-                  { value: 'sp', label: 'シュートパワー' },
-                  { value: 'tau', label: 'トルク (a.u.)' },
-                ]}
-              />
-              <SegmentedToggle
-                value={bandChartMode}
-                onChange={setBandChartMode}
-                options={[
-                  { value: 'avg', label: '平均' },
-                  { value: 'overlay', label: '重ね描き' },
-                ]}
-              />
-            </div>
-
-            <BandChart
-              shots={selectedBandShots}
-              mode={bandChartMode}
-              seriesTarget={bandChartTarget}
-              alignment="start"
-              normalize={false}
-              rangeStart={0}
-              rangeEnd={RECENT_X_MAX_MS}
-              fixedYMin={0}
-              fixedYMax={bandChartTarget === 'tau' ? RECENT_Y_MAX_TAU : RECENT_Y_MAX_SP}
-              fixedXTicks={[0, 100, 200, 300, 400]}
-              fixedYTicks={bandChartTarget === 'tau' ? [0, 50, 100, 150, 200, 250] : [0, 3000, 6000, 9000, 12000]}
-              xLabel="時間 (ms)"
-              yLabel={bandChartTarget === 'tau' ? '入力トルク (推定, a.u.)' : 'シュートパワー (rpm)'}
-              maxOverlay={20}
+            <SegmentedToggle
+              value={bandChartMode}
+              onChange={setBandChartMode}
+              options={[
+                { value: 'avg', label: '平均' },
+                { value: 'overlay', label: '重ね描き' },
+              ]}
             />
+          </div>
 
-            <div className="stats-two-col">
-              <div className="stats-col">
-                <h4>帯域のシュートパワー統計</h4>
-                <div>合計: {selectedBandShots.length}本</div>
-                <div>・ストリングランチャー: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}本</div>
-                <div>・ワインダーランチャー: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}本</div>
-                <div>・ロングワインダー: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}本</div>
-                <div>平均: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> rpm</span></> : '—'}</div>
-                <div>最高: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> rpm</span></> : '—'}</div>
-                <div>標準偏差: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : '—'}</div>
-              </div>
+          <BandChart
+            shots={selectedBandShots}
+            mode={bandChartMode}
+            seriesTarget={bandChartTarget}
+            alignment="start"
+            normalize={false}
+            rangeStart={0}
+            rangeEnd={RECENT_X_MAX_MS}
+            fixedYMin={0}
+            fixedYMax={bandChartTarget === 'tau' ? RECENT_Y_MAX_TAU : RECENT_Y_MAX_SP}
+            fixedXTicks={[0, 100, 200, 300, 400]}
+            fixedYTicks={bandChartTarget === 'tau' ? [0, 50, 100, 150, 200, 250] : [0, 3000, 6000, 9000, 12000]}
+            xLabel="時間 (ms)"
+            yLabel={bandChartTarget === 'tau' ? '入力トルク (推定, a.u.)' : 'シュートパワー (rpm)'}
+            maxOverlay={20}
+          />
 
-              <div className="stats-col detail">
-                <h4>詳細データ</h4>
-                <div className="detail-grid">
-                  <div className="detail-col">
-                    <h5>シュート要素</h5>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.maxTau} />
-                      <strong>{hasSelectedBandData ? `${selectedBandMaxTau} a.u.` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.t_50} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.t_peak} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.slope_max} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.auc_0_peak} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.spike_score} />
-                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : '—'}</strong>
-                    </div>
+          <div className="stats-two-col">
+            <div className="stats-col">
+              <h4>帯域のシュートパワー統計</h4>
+              <div>合計: {selectedBandShots.length}本</div>
+              <div>・ストリングランチャー: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}本</div>
+              <div>・ワインダーランチャー: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}本</div>
+              <div>・ロングワインダー: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}本</div>
+              <div>平均: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> rpm</span></> : '—'}</div>
+              <div>最高: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> rpm</span></> : '—'}</div>
+              <div>標準偏差: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : '—'}</div>
+            </div>
+
+            <div className="stats-col detail">
+              <h4>詳細データ</h4>
+              <div className="detail-grid">
+                <div className="detail-col">
+                  <h5>シュート要素</h5>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.maxTau} />
+                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau} a.u.` : '—'}</strong>
                   </div>
-
-                  <div className="detail-col">
-                    <h5>シュートタイプ判定</h5>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.early_input_ratio} />
-                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.late_input_ratio} />
-                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.peak_input_time} />
-                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <MetricLabel help={METRIC_LABELS.input_stability} />
-                      <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : '—'}</strong>
-                    </div>
-                    <div className="compact-metric">
-                      <span>選択中ランチャー</span>
-                      <strong>{launcherLabel(launcherType)}</strong>
-                    </div>
-                    <div className="judge-text">シュートタイプ判定: {selectedBandShootType}</div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.t_50} />
+                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
                   </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.t_peak} />
+                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.slope_max} />
+                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.auc_0_peak} />
+                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.spike_score} />
+                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                  </div>
+                </div>
+
+                <div className="detail-col">
+                  <h5>シュートタイプ判定</h5>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.early_input_ratio} />
+                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.late_input_ratio} />
+                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.peak_input_time} />
+                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <MetricLabel help={METRIC_LABELS.input_stability} />
+                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : '—'}</strong>
+                  </div>
+                  <div className="compact-metric">
+                    <span>選択中ランチャー</span>
+                    <strong>{launcherLabel(launcherType)}</strong>
+                  </div>
+                  <div className="judge-text">シュートタイプ判定: {selectedBandShootType}</div>
                 </div>
               </div>
             </div>
-          </NeonPanel>
+          </div>
+        </NeonPanel>
+      </div>
+    </section>
+  )
+
+  if (isMobileLayout) {
+    return (
+      <main className="layout app-mobile app-compact neon-theme mobile-shell">
+        <div className="mobile-pager" ref={mobilePagerRef}>
+          <section className="mobile-page">
+            <SectionHeader en="SETTINGS" title="設定・接続" description="接続状態とランチャー選択" />
+            {headerNode}
+          </section>
+          <section className="mobile-page">{recentNode}</section>
+          <section className="mobile-page">{historyNode}</section>
         </div>
-      </section>
+        <div className="mobile-page-dots" aria-label="ページインジケーター">
+          {[0, 1, 2].map((page) => (
+            <button
+              key={page}
+              type="button"
+              className={`mobile-page-dot ${activeMobilePage === page ? 'active' : ''}`}
+              onClick={() => moveToMobilePage(page)}
+              aria-label={`ページ ${page + 1} に移動`}
+            >
+              {activeMobilePage === page ? '●' : '○'}
+            </button>
+          ))}
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="layout app-mobile app-compact neon-theme">
+      {headerNode}
+      {recentNode}
+      {historyNode}
     </main>
   )
 }

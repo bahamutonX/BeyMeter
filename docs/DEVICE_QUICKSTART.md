@@ -30,6 +30,5 @@ pnpm cap:open:android
 Android Studio で `Build > Build APK(s)` を実行し、生成 APK を実機へインストールします。
 
 ## 補足
-- Native BLE は `@capawesome-team/capacitor-bluetooth-low-energy` が必要です。
-- private registry の場合は `.npmrc` にトークン設定が必要です。
+- Native BLE は `@capacitor-community/bluetooth-le` を使用します。
 - デバッグ生ログページは `/rawlog` 直打ちで利用できます（通常画面にリンクなし）。

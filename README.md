@@ -22,6 +22,13 @@ BeyMeter は、BEYBLADE Battle Pass（BBP）と接続して、シュート波形
 
 ## 画面の見方
 
+### スマホUI（iOS/Android）
+- 3画面の横スワイプUI
+  - 左: 設定・接続
+  - 中央: 直近のシュート
+  - 右: 履歴と分析
+- 画面下の `○●○` インジケーターはタップでもページ移動可能
+
 ### 直近のシュート
 - 記録シュートパワー
   - BBP本体に記録された値
@@ -74,6 +81,11 @@ pnpm install
 pnpm dev
 ```
 
+Native BLE を更新した場合:
+```bash
+pnpm cap:sync
+```
+
 ### scripts
 ```bash
 pnpm dev
@@ -117,6 +129,10 @@ pnpm cap:open:ios
 pnpm ios:add
 ```
 
+補足:
+- Native BLE は `@capacitor-community/bluetooth-le` を利用
+- iOS は Xcode で Team 設定後に実機 Run
+
 ## Android 実機起動
 ```bash
 pnpm build
@@ -128,6 +144,9 @@ pnpm cap:open:android
 ```bash
 pnpm android:add
 ```
+
+補足:
+- Native BLE は `@capacitor-community/bluetooth-le` を利用
 
 ## ライセンス
 MIT License（`LICENSE`）
