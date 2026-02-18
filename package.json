@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:pages": "VITE_BASE_PATH=/BeyMeter/ tsc -b && vite build",
+    "build:pages": "tsc -b && VITE_BASE_PATH=/BeyMeter/ vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:pages": "VITE_BASE_PATH=/BeyMeter/ vite preview",
