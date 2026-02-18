@@ -5,6 +5,7 @@ BeyMeter は、BEYBLADE Battle Pass（BBP）と接続して、シュート波形
 - Web（PC Chrome/Edge）で URL 配布して利用可能
 - iOS / Android は Capacitor ネイティブアプリとして実機動作
 - BLE 層を Web / Native で差し替える構成
+- UIは `ja/en` 自動切替（OS/ブラウザ優先言語、手動トグルなし）
 
 ## 配布 URL（Web）
 - https://bahamutonX.github.io/BeyMeter/
@@ -80,6 +81,29 @@ BeyMeter は、BEYBLADE Battle Pass（BBP）と接続して、シュート波形
 pnpm install
 pnpm dev
 ```
+
+## i18n（多言語）
+
+- 使用ライブラリ:
+  - `i18next`
+  - `react-i18next`
+  - `i18next-browser-languagedetector`
+- 初期化:
+  - `src/i18n.ts`
+  - 言語検出は `navigator` のみ
+  - `supportedLngs = ['en', 'ja']`
+  - `fallbackLng = 'en'`
+  - `load = 'languageOnly'`（`ja-JP` → `ja`）
+- 翻訳ファイル:
+  - `src/locales/en/translation.json`
+  - `src/locales/ja/translation.json`
+
+### 翻訳追加ルール
+
+- キー命名はドット区切りで用途ごとに分割
+  - 例: `recent.title`, `ble.connected`, `metrics.t_peak.label`
+- Reactコンポーネントでは `useTranslation()` を使い、ハードコードを避ける
+- 補間は `t('key', { value })` を利用
 
 Native BLE を更新した場合:
 ```bash

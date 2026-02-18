@@ -1,0 +1,189 @@
+{
+  "app": {
+    "title": "BeyMeter"
+  },
+  "common": {
+    "connect": "接続する",
+    "disconnect": "切断する",
+    "connecting": "接続中...",
+    "disconnecting": "切断中...",
+    "none": "--",
+    "metricInfoAria": "{{label}} の説明",
+    "mean": "平均",
+    "median": "中央値",
+    "noData": "データなし"
+  },
+  "ble": {
+    "connected": "ベイバトルパス 接続中",
+    "disconnected": "ベイバトルパス 未接続",
+    "connecting": "ベイバトルパス 接続中...",
+    "disconnecting": "ベイバトルパス 切断中...",
+    "stateConnected": "接続中",
+    "stateDisconnected": "未接続",
+    "stateConnecting": "接続中...",
+    "stateDisconnecting": "切断中...",
+    "attachOn": "ベイ装着",
+    "attachOff": "ベイ未装着",
+    "attachUnknown": "ベイ状態: 不明",
+    "commError": "通信エラー",
+    "holdToPair": "ベイバトルパスを長押ししてください",
+    "deviceNotFound": "ベイバトルパスが見つかりません。接続ボタンを押してからベイバトルパスを長押ししてください。",
+    "connectFailed": "接続に失敗しました。接続ボタンを押してからベイバトルパスを長押ししてください。",
+    "initFailed": "Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。",
+    "notAvailable": "この端末ではBluetooth接続が利用できません。"
+  },
+  "launcher": {
+    "label": "ランチャー",
+    "selectPrompt": "ランチャーを選んでください",
+    "selected": "選択中ランチャー",
+    "string": "ストリングランチャー",
+    "winder": "ワインダーランチャー",
+    "longWinder": "ロングワインダー"
+  },
+  "shootType": {
+    "label": "シュートタイプ",
+    "judge": "シュートタイプ判定",
+    "frontLoaded": "引き始め集中型",
+    "lateRise": "尻上がり型",
+    "constantInput": "一定入力型",
+    "wavy": "波あり型"
+  },
+  "mobile": {
+    "settingsTitle": "設定・接続",
+    "settingsDesc": "ランチャー選択とベイバトルパス接続",
+    "connectedNotice": "接続できました",
+    "guideAfterConnect": "ベイを装着して、シュートしてください。連続してシュートできます。",
+    "pageMove": "ページ {{page}} に移動"
+  },
+  "recent": {
+    "en": "RECENT",
+    "title": "シュート解析",
+    "description": "シュートを検知してシュートパワーとシュート波形を表示",
+    "statusAria": "直近画面ステータス",
+    "chartStatusAria": "接続状態",
+    "recordSp": "記録シュートパワー（ベイバトルパス公式値）",
+    "estSp": "推定SP（波形補正値）",
+    "maxSp": "最大SP（ピーク値）",
+    "waveformTitle": "直近のシュート波形",
+    "peak": "ピーク",
+    "maxShotPower": "最大シュートパワー",
+    "suspect": "異常値の可能性",
+    "spSeries": "シュートパワー",
+    "torqueSeries": "トルク (a.u.)",
+    "torqueEmpty": "推定トルク (a.u.): --",
+    "statusPrefix": "ベイバトルパス",
+    "beyPrefix": "ベイ"
+  },
+  "history": {
+    "en": "HISTORY",
+    "title": "履歴と分析",
+    "description": "過去のデータから帯域別に特徴を解析することができます",
+    "reset": "データリセット",
+    "confirmReset": "履歴データをすべて削除します。元に戻せません。実行しますか？",
+    "bandTitle": "シュートパワー帯域",
+    "countUnit": "件",
+    "summary": "シュートパワー統計: 合計 {{total}}本 / 平均 {{avg}} rpm / 最高 {{max}} rpm / SD {{stddev}}",
+    "waveformBand": "シュート波形：帯域{{bandId}}",
+    "peakAvg": "ピーク(平均)",
+    "maxShotPowerAvg": "最大シュートパワー(平均)",
+    "maxTorqueAvg": "最大トルク(平均)",
+    "modeAvg": "平均",
+    "modeOverlay": "重ね描き",
+    "statsTitle": "帯域のシュートパワー統計",
+    "total": "合計",
+    "avg": "平均",
+    "max": "最高",
+    "stddev": "標準偏差",
+    "detailTitle": "詳細データ",
+    "shotFactors": "シュート要素"
+  },
+  "labels": {
+    "timeMs": "時間 (ms)",
+    "shotPowerRpm": "シュートパワー (rpm)",
+    "inputTorque": "入力トルク (推定, a.u.)",
+    "rpm": "rpm",
+    "shots": "本"
+  },
+  "settings": {
+    "en": "SETTINGS"
+  },
+  "rawlog": {
+    "title": "ベイバトルパス Raw Log",
+    "clear": "ログ消去",
+    "back": "メーターへ戻る",
+    "connected": "接続",
+    "attached": "ベイ装着",
+    "packetCount": "パケット数",
+    "headerSummary": "ヘッダ集計",
+    "receivedAll": "受信ログ（全件）",
+    "on": "ON",
+    "off": "OFF"
+  },
+  "metrics": {
+    "maxTau": {
+      "label": "最大入力トルク",
+      "line1": "意味: 加速区間から推定した入力の強さ",
+      "line2": "大: 初動入力が強い / 小: 初動入力が弱い",
+      "line3": "注意: 単発で断定せず、複数回の傾向で判断"
+    },
+    "t_peak": {
+      "label": "t_peak",
+      "line1": "意味: シュート開始から最大回転に達するまでの時間(ms)",
+      "line2": "大: 立ち上がりが遅い / 小: 立ち上がりが速い",
+      "line3": "改善: 初動を強く、引き始めの加速を意識"
+    },
+    "t_50": {
+      "label": "t_50",
+      "line1": "意味: ピークの50%に達するまでの時間(ms)",
+      "line2": "大: 初速が乗りにくい / 小: 初速が素早く立つ",
+      "line3": "改善: 引き始めの力の立ち上げを滑らかに"
+    },
+    "slope_max": {
+      "label": "slope_max",
+      "line1": "意味: 回転数の増え方の最大値（立ち上がりの鋭さ）",
+      "line2": "大: 一気に加速 / 小: 加速が穏やか",
+      "line3": "改善: 最初の一押しを強く、迷いを減らす"
+    },
+    "auc_0_peak": {
+      "label": "auc_0_peak",
+      "line1": "意味: 0〜最初のピークまでの回転総量",
+      "line2": "大: ピークまでの立ち上がりで稼げる / 小: 初動が弱め",
+      "line3": "改善: ピークまでの加速を切らさず、出力を繋ぐ"
+    },
+    "spike_score": {
+      "label": "spike_score",
+      "line1": "意味: 突発スパイクの出やすさ",
+      "line2": "1に近い: 自然 / 大きい: ノイズ傾向",
+      "line3": "改善: 引きを急に止めず、一定の抜けにする"
+    },
+    "early_input_ratio": {
+      "label": "early_input_ratio",
+      "line1": "意味: 前半入力比率（序盤に入力が集中した割合）",
+      "line2": "大: 引き始め集中 / 小: 入力が後半寄り",
+      "line3": "改善: 一定入力型を狙うなら前半偏重を抑える"
+    },
+    "late_input_ratio": {
+      "label": "late_input_ratio",
+      "line1": "意味: 後半入力比率（ピーク直前の入力割合）",
+      "line2": "大: 尻上がり型の傾向 / 小: 前半で入力を使い切る傾向",
+      "line3": "改善: 目標帯域に合わせて後半の伸びを調整"
+    },
+    "peak_input_time": {
+      "label": "peak_input_time",
+      "line1": "意味: 入力加速が最大になった時刻(ms)",
+      "line2": "大: 後半で入力ピーク / 小: 早い段階で入力ピーク",
+      "line3": "改善: 高い帯域を狙う時はピークが遅すぎないよう調整"
+    },
+    "input_stability": {
+      "label": "input_stability",
+      "line1": "意味: 入力の安定度（小さいほど一定）",
+      "line2": "大: 力の波が大きい / 小: 一定の力で引けている",
+      "line3": "改善: 速度変動を減らし、引き切りまで一定を意識"
+    }
+  },
+  "chart": {
+    "insufficientWaveform": "波形データ不足",
+    "insufficientBandData": "帯域データなし",
+    "insufficientSeries": "系列不足"
+  }
+}

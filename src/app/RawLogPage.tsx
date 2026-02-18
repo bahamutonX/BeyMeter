@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BleService } from '../features/ble/BleService'
 import type { BbpPacket, ProtocolError } from '../features/ble/bbpTypes'
 import { NeonPanel } from '../ui/NeonPanel'
@@ -22,6 +23,7 @@ function formatTimestamp(ts: number): string {
 }
 
 export function RawLogPage() {
+  const { t } = useTranslation()
   const bleRef = useRef(new BleService())
   const [state, setState] = useState<RawLogState>({
     connected: false,
@@ -105,7 +107,7 @@ export function RawLogPage() {
   return (
     <main className="layout app-mobile app-compact neon-theme rawlog-page">
       <NeonPanel className="rawlog-header">
-        <h1>ベイバトルパス Raw Log</h1>
+        <h1>{t('rawlog.title')}</h1>
         <div className="rawlog-actions">
           <button
             className="mini-btn subtle"
@@ -114,27 +116,27 @@ export function RawLogPage() {
             disabled={state.connecting || state.disconnecting}
           >
             {state.connecting
-              ? '接続中...'
+              ? t('common.connecting')
               : state.disconnecting
-                ? '切断中...'
+                ? t('common.disconnecting')
                 : state.connected
-                  ? '切断する'
-                  : '接続する'}
+                  ? t('common.disconnect')
+                  : t('common.connect')}
           </button>
-          <button className="mini-btn subtle" type="button" onClick={clearLogs}>ログ消去</button>
-          <a className="mini-btn subtle" href="/">メーターへ戻る</a>
+          <button className="mini-btn subtle" type="button" onClick={clearLogs}>{t('rawlog.clear')}</button>
+          <a className="mini-btn subtle" href="/">{t('rawlog.back')}</a>
         </div>
         <section className="rawlog-status">
-          <div>接続: {state.connected ? 'ON' : 'OFF'}</div>
-          <div>ベイ装着: {state.attached ? 'ON' : 'OFF'}</div>
-          <div>パケット数: {state.packets.length}</div>
+          <div>{t('rawlog.connected')}: {state.connected ? t('rawlog.on') : t('rawlog.off')}</div>
+          <div>{t('rawlog.attached')}: {state.attached ? t('rawlog.on') : t('rawlog.off')}</div>
+          <div>{t('rawlog.packetCount')}: {state.packets.length}</div>
         </section>
 
         {state.error ? <p className="rawlog-error">{state.error}</p> : null}
       </NeonPanel>
 
       <NeonPanel className="rawlog-summary">
-        <h2>ヘッダ集計</h2>
+        <h2>{t('rawlog.headerSummary')}</h2>
         <div className="rawlog-counts">
           {headerCounts.map(([h, c]) => (
             <span key={h}>{`0x${h.toString(16).toUpperCase().padStart(2, '0')}: ${c}`}</span>
@@ -143,7 +145,7 @@ export function RawLogPage() {
       </NeonPanel>
 
       <NeonPanel className="rawlog-list-wrap">
-        <h2>受信ログ（全件）</h2>
+        <h2>{t('rawlog.receivedAll')}</h2>
         <div className="rawlog-list">
           {state.packets.map((p, idx) => (
             <div className="rawlog-row" key={`${p.timestamp}-${idx}`}>

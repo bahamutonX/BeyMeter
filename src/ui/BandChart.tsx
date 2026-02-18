@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PersistentShot } from '../features/meter/shotStorage'
 import { aggregateSeries } from '../analysis/aggregateSeries'
 import { alignTime, findPeakIndexRobust, type AlignmentMode } from '../analysis/align'
@@ -98,10 +99,11 @@ export function BandChart({
   fixedYMax,
   fixedXTicks,
   fixedYTicks,
-  xLabel = '時間 (ms)',
-  yLabel = '値',
+  xLabel = 'Time (ms)',
+  yLabel = 'Value',
   maxOverlay = 20,
 }: BandChartProps) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -123,7 +125,7 @@ export function BandChart({
     if (validShots.length === 0) {
       ctx.fillStyle = '#8fa7bf'
       ctx.font = '12px sans-serif'
-      ctx.fillText('帯域データなし', 12, 20)
+      ctx.fillText(t('chart.insufficientBandData'), 12, 20)
       return
     }
 
@@ -174,7 +176,7 @@ export function BandChart({
     if (series.length === 0) {
       ctx.fillStyle = '#8fa7bf'
       ctx.font = '12px sans-serif'
-      ctx.fillText('系列不足', 12, 20)
+      ctx.fillText(t('chart.insufficientSeries'), 12, 20)
       return
     }
 
@@ -304,6 +306,7 @@ export function BandChart({
     rangeStart,
     seriesTarget,
     shots,
+    t,
     xLabel,
     yLabel,
   ])

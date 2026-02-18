@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { findPeakIndexRobust } from '../analysis/align'
 import type { ShotProfile } from '../features/ble/bbpTypes'
 
@@ -40,6 +41,7 @@ export function ProfileChart({
   fixedXTicks,
   fixedYTicks,
 }: ProfileChartProps) {
+  const { t } = useTranslation()
   const chart = useMemo(() => {
     const baseProfiles = overlays.filter((x): x is ShotProfile => Boolean(x && x.sp.length >= 2))
     const hasOverlay = baseProfiles.length > 0
@@ -83,7 +85,7 @@ export function ProfileChart({
           if (!chart) {
             ctx.fillStyle = '#8fa7bf'
             ctx.font = '12px sans-serif'
-            ctx.fillText('波形データ不足', 12, 20)
+            ctx.fillText(t('chart.insufficientWaveform'), 12, 20)
             return
           }
 
@@ -207,7 +209,7 @@ export function ProfileChart({
 
           ctx.fillStyle = '#cfe4ff'
           ctx.font = '11px sans-serif'
-          ctx.fillText('時間 (ms)', width - 82, height - 10)
+          ctx.fillText(t('labels.timeMs'), width - 82, height - 10)
           ctx.save()
           ctx.translate(10, padTop + innerH / 2 + 20)
           ctx.rotate(-Math.PI / 2)

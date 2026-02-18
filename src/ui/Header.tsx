@@ -1,4 +1,5 @@
 import type { LauncherType } from '../features/meter/shootType'
+import { useTranslation } from 'react-i18next'
 
 interface HeaderProps {
   bleConnected: boolean
@@ -42,26 +43,27 @@ export function Header({
   onConnect,
   onDisconnect,
 }: HeaderProps) {
+  const { t } = useTranslation()
   const connectionLabel = connecting
-    ? 'ベイバトルパス 接続中...'
+    ? t('ble.connecting')
     : disconnecting
-      ? 'ベイバトルパス 切断中...'
+      ? t('ble.disconnecting')
     : bleConnected
-      ? 'ベイバトルパス 接続中'
-      : 'ベイバトルパス 未接続'
-  const attachLabel = bleConnected ? (beyAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'
+      ? t('ble.connected')
+      : t('ble.disconnected')
+  const attachLabel = bleConnected ? (beyAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')
   const actionLabel = connecting
-    ? '接続中...'
+    ? t('common.connecting')
     : disconnecting
-      ? '切断中...'
+      ? t('common.disconnecting')
       : bleConnected
-        ? '切断する'
-        : '接続する'
+        ? t('common.disconnect')
+        : t('common.connect')
 
   return (
     <header className="app-header">
       <div className="app-title-row">
-        <h1 className="app-title">BeyMeter</h1>
+        <h1 className="app-title">{t('app.title')}</h1>
         <a
           className="app-credit"
           href="https://x.com/bahamutonX"
@@ -82,9 +84,9 @@ export function Header({
         </button>
         <StatusDot active={bleConnected || connecting} label={connectionLabel} variant={connecting || disconnecting ? 'connecting' : 'default'} />
         <StatusDot active={bleConnected && beyAttached} label={attachLabel} />
-        {lastError ? <StatusDot active={true} label="通信エラー" variant="error" /> : null}
-        <div className="header-launcher-toggle" role="group" aria-label="ランチャー選択">
-          <span className="launcher-toggle-label">ランチャー</span>
+        {lastError ? <StatusDot active={true} label={t('ble.commError')} variant="error" /> : null}
+        <div className="header-launcher-toggle" role="group" aria-label={t('launcher.label')}>
+          <span className="launcher-toggle-label">{t('launcher.label')}</span>
           <div className="launcher-toggle-buttons">
             {launcherOptions.map((opt) => (
               <button
@@ -100,7 +102,7 @@ export function Header({
           </div>
         </div>
       </div>
-      {connecting ? <div className="hint-line">ベイバトルパスを長押ししてください</div> : null}
+      {connecting ? <div className="hint-line">{t('ble.holdToPair')}</div> : null}
       {lastError ? (
         <div className="hint-line error">{lastError}</div>
       ) : null}

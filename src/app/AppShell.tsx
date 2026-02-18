@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BleService } from '../features/ble/BleService'
 import type { ProtocolError, ShotProfile, ShotSnapshot } from '../features/ble/bbpTypes'
 import { ShotStore, type MeterViewState } from '../features/meter/ShotStore'
@@ -22,7 +23,7 @@ import { aggregateSeries } from '../analysis/aggregateSeries'
 import {
   classifyShootType,
   LAUNCHER_OPTIONS,
-  launcherLabel,
+  type ShootType,
   type LauncherType,
 } from '../features/meter/shootType'
 
@@ -115,19 +116,19 @@ function formatMaybe(value: number, hasData: boolean, digits = 2): string {
   return Number(value.toFixed(digits)).toString()
 }
 
-function toJapaneseErrorMessage(message: string): string {
+function toLocalizedErrorMessage(t: (key: string) => string, message: string): string {
   const m = message.toLowerCase()
   if (m.includes('bbp device not found') || m.includes('device not found')) {
-    return 'ベイバトルパスが見つかりません。接続ボタンを押してからベイバトルパスを長押ししてください。'
+    return t('ble.deviceNotFound')
   }
   if (m.includes('not implemented on ios') || m.includes('plugin is not implemented')) {
-    return 'Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。'
+    return t('ble.initFailed')
   }
   if (m.includes('failed to connect') || m.includes('gatt')) {
-    return '接続に失敗しました。接続ボタンを押してからベイバトルパスを長押ししてください。'
+    return t('ble.connectFailed')
   }
   if (m.includes('notavailableerror') || m.includes('bluetooth is not available')) {
-    return 'この端末ではBluetooth接続が利用できません。'
+    return t('ble.notAvailable')
   }
   return message
 }
@@ -146,6 +147,7 @@ function summarizeFeature(
 }
 
 export function AppShell() {
+  const { t } = useTranslation()
   const bleRef = useRef(new BleService())
   const storeRef = useRef(new ShotStore())
 
@@ -190,7 +192,7 @@ export function AppShell() {
     }
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!isMobileLayout) return
@@ -285,7 +287,7 @@ export function AppShell() {
       },
       onError: (error: ProtocolError) => {
         const msg = error.detail ? `${error.message}: ${error.detail}` : error.message
-        setBleUi((prev) => ({ ...prev, lastError: toJapaneseErrorMessage(msg) }))
+        setBleUi((prev) => ({ ...prev, lastError: toLocalizedErrorMessage(t, msg) }))
         setViewState(storeRef.current.setError(error))
       },
       onRaw: (packet) => {
@@ -321,7 +323,7 @@ export function AppShell() {
       ble.stopAutoReconnectLoop()
       ble.disconnect()
     }
-  }, [])
+  }, [t])
 
   const latest = viewState.latest
   const latestProfile = latest?.profile ?? null
@@ -330,13 +332,19 @@ export function AppShell() {
     () => (latest ? persistedShots.find((s) => s.createdAt === latest.receivedAt) ?? null : null),
     [latest, persistedShots],
   )
-  const latestShootType = useMemo(
+  const latestShootTypeKey = useMemo(
     () => classifyShootType(latestPersisted?.features),
     [latestPersisted?.features],
   )
+  const shootTypeLabel = useCallback((key: ShootType): string => t(`shootType.${key}`), [t])
+  const launcherLabel = useCallback((type: LauncherType): string => t(`launcher.${type}`), [t])
+  const launcherOptions = useMemo(
+    () => LAUNCHER_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) })),
+    [t],
+  )
   const latestLauncherText = useMemo(
     () => launcherLabel((latestPersisted?.launcherType ?? launcherType) as LauncherType),
-    [latestPersisted?.launcherType, launcherType],
+    [latestPersisted?.launcherType, launcherType, launcherLabel],
   )
   const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
   const isYourSuspicious = useMemo(() => isSuspectShot(latest), [latest])
@@ -385,9 +393,9 @@ export function AppShell() {
       const type = classifyShootType(shot.features)
       buckets.set(type, (buckets.get(type) ?? 0) + 1)
     }
-    if (buckets.size === 0) return '—'
-    return [...buckets.entries()].sort((a, b) => b[1] - a[1])[0][0]
-  }, [selectedBandShots])
+    if (buckets.size === 0) return t('common.none')
+    return shootTypeLabel([...buckets.entries()].sort((a, b) => b[1] - a[1])[0][0] as ShootType)
+  }, [selectedBandShots, shootTypeLabel, t])
   const selectedBandShootFeatures = useMemo(() => {
     return {
       t50: summarizeFeature(selectedBandShots, 't_50'),
@@ -445,7 +453,7 @@ export function AppShell() {
     try {
       await bleRef.current.connect()
       setSessionShotCount(0)
-      setRecentNotice('接続できました')
+      setRecentNotice(t('mobile.connectedNotice'))
       if (isMobileLayout) {
         moveToMobilePage(1)
         setActiveMobilePage(1)
@@ -453,7 +461,7 @@ export function AppShell() {
     } catch (error) {
       setBleUi((prev) => ({
         ...prev,
-        lastError: toJapaneseErrorMessage(error instanceof Error ? error.message : String(error)),
+        lastError: toLocalizedErrorMessage(t, error instanceof Error ? error.message : String(error)),
       }))
     } finally {
       setBleUi((prev) => ({ ...prev, connecting: false }))
@@ -481,7 +489,7 @@ export function AppShell() {
   }
 
   async function handleResetAll() {
-    const ok = window.confirm('履歴データをすべて削除します。元に戻せません。実行しますか？')
+    const ok = window.confirm(t('history.confirmReset'))
     if (!ok) {
       return
     }
@@ -499,7 +507,7 @@ export function AppShell() {
       beyAttached={isBayAttached}
       lastError={bleUi.lastError}
       launcherType={launcherType}
-      launcherOptions={LAUNCHER_OPTIONS}
+      launcherOptions={launcherOptions}
       onLauncherTypeChange={setLauncherType}
       onConnect={() => void handleConnect()}
       onDisconnect={handleDisconnect}
@@ -507,40 +515,40 @@ export function AppShell() {
   )
 
   const mobileGuideMessage = bleUi.connected && sessionShotCount === 0
-    ? 'ベイを装着して、シュートしてください。連続してシュートできます。'
+    ? t('mobile.guideAfterConnect')
     : null
 
   const recentNode = (
     <section className="section-shell recent-shell">
       <div className="section-head-row recent-head-row">
         <SectionHeader
-          en="RECENT"
-          title="シュート解析"
-          description="シュートを検知してシュートパワーとシュート波形を表示"
+          en={t('recent.en')}
+          title={t('recent.title')}
+          description={t('recent.description')}
         />
-        <div className="recent-status-row" aria-label="直近画面ステータス">
+        <div className="recent-status-row" aria-label={t('recent.statusAria')}>
           <div className="status-item compact">
             <span
               className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`}
             />
             <span>
               {bleUi.connecting
-                ? '接続中...'
+                ? t('common.connecting')
                 : bleUi.disconnecting
-                  ? '切断中...'
+                  ? t('common.disconnecting')
                   : bleUi.connected
-                    ? 'ベイバトルパス 接続中'
-                    : 'ベイバトルパス 未接続'}
+                    ? t('ble.connected')
+                    : t('ble.disconnected')}
             </span>
           </div>
           <div className="status-item compact">
             <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
-            <span>{bleUi.connected ? (isBayAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'}</span>
+            <span>{bleUi.connected ? (isBayAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')}</span>
           </div>
           {bleUi.lastError ? (
             <div className="status-item compact">
               <span className="status-dot on error" />
-              <span>通信エラー</span>
+              <span>{t('ble.commError')}</span>
             </div>
           ) : null}
         </div>
@@ -548,7 +556,7 @@ export function AppShell() {
       <div className="current-section">
         <NeonPanel className="current-left">
           <article className="main-card">
-            <h2>記録シュートパワー（ベイバトルパス公式値）</h2>
+            <h2>{t('recent.recordSp')}</h2>
             <div className="main-value">
               {latest ? (
                 <>
@@ -559,15 +567,15 @@ export function AppShell() {
                 '--'
               )}
             </div>
-            <div className="card-help launcher-line">ランチャー: {latest ? latestLauncherText : '--'}</div>
+            <div className="card-help launcher-line">{t('launcher.label')}: {latest ? latestLauncherText : t('common.none')}</div>
             <div className="shoot-type-label">
-              シュートタイプ: {latest ? latestShootType : '--'}
+              {t('shootType.label')}: {latest ? shootTypeLabel(latestShootTypeKey) : t('common.none')}
             </div>
-            {isYourSuspicious ? <span className="warn-badge">異常値の可能性</span> : null}
+            {isYourSuspicious ? <span className="warn-badge">{t('recent.suspect')}</span> : null}
           </article>
           <div className="sub-card-row">
             <article className="sub-card">
-              <h3>推定SP（波形補正値）</h3>
+              <h3>{t('recent.estSp')}</h3>
               <div className="sub-value">
                 {latest ? (
                   <>
@@ -580,7 +588,7 @@ export function AppShell() {
               </div>
             </article>
             <article className="sub-card">
-              <h3>最大SP（ピーク値）</h3>
+              <h3>{t('recent.maxSp')}</h3>
               <div className="sub-value">
                 {latest ? (
                   <>
@@ -597,22 +605,22 @@ export function AppShell() {
 
         <NeonPanel className="current-right">
           <div className="chart-head-row">
-            <h3>直近のシュート波形</h3>
-            <div className="chart-status-meta" aria-label="接続状態">
+            <h3>{t('recent.waveformTitle')}</h3>
+            <div className="chart-status-meta" aria-label={t('recent.chartStatusAria')}>
               <span>
                 {bleUi.connecting
-                  ? 'ベイバトルパス: 接続中...'
+                  ? `${t('recent.statusPrefix')}: ${t('ble.stateConnecting')}`
                   : bleUi.disconnecting
-                    ? 'ベイバトルパス: 切断中...'
+                    ? `${t('recent.statusPrefix')}: ${t('ble.stateDisconnecting')}`
                     : bleUi.connected
-                      ? 'ベイバトルパス: 接続中'
-                      : 'ベイバトルパス: 未接続'}
+                      ? `${t('recent.statusPrefix')}: ${t('ble.stateConnected')}`
+                      : `${t('recent.statusPrefix')}: ${t('ble.stateDisconnected')}`}
               </span>
-              <span>{bleUi.connected ? (isBayAttached ? 'ベイ: 装着' : 'ベイ: 未装着') : 'ベイ: 不明'}</span>
+              <span>{bleUi.connected ? (isBayAttached ? `${t('recent.beyPrefix')}: ${t('rawlog.on')}` : `${t('recent.beyPrefix')}: ${t('rawlog.off')}`) : `${t('recent.beyPrefix')}: ${t('ble.attachUnknown')}`}</span>
             </div>
             <div className="shot-meta">
-              <span>ピーク: {latest ? `${latestPeakTimeMs}ms` : '--'}</span>
-              <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
+              <span>{t('recent.peak')}: {latest ? `${latestPeakTimeMs}ms` : t('common.none')}</span>
+              <span>{t('recent.maxShotPower')}: {latest ? `${latest.maxSp} rpm` : t('common.none')}</span>
             </div>
           </div>
           {recentNotice ? <div className="mobile-recent-msg success">{recentNotice}</div> : null}
@@ -621,8 +629,8 @@ export function AppShell() {
             value={currentChartTarget}
             onChange={setCurrentChartTarget}
             options={[
-              { value: 'sp', label: 'シュートパワー' },
-              { value: 'tau', label: 'トルク (a.u.)' },
+              { value: 'sp', label: t('recent.spSeries') },
+              { value: 'tau', label: t('recent.torqueSeries') },
             ]}
           />
           {currentChartTarget === 'sp' ? (
@@ -630,7 +638,7 @@ export function AppShell() {
               profile={latestProfile}
               peakIndex={peakIndex}
               timeMode="start"
-              yLabel="シュートパワー (rpm)"
+              yLabel={t('labels.shotPowerRpm')}
               fixedXMaxMs={RECENT_X_MAX_MS}
               fixedYMax={RECENT_Y_MAX_SP}
               fixedXTicks={[0, 100, 200, 300, 400]}
@@ -651,14 +659,14 @@ export function AppShell() {
               }}
               peakIndex={Math.max(0, latestTorqueSeries.tau.findIndex((x) => x === Math.max(...latestTorqueSeries.tau)))}
               timeMode="start"
-              yLabel="入力トルク (推定, a.u.)"
+              yLabel={t('labels.inputTorque')}
               fixedXMaxMs={RECENT_X_MAX_MS}
               fixedYMax={RECENT_Y_MAX_TAU}
               fixedXTicks={[0, 100, 200, 300, 400]}
               fixedYTicks={[0, 50, 100, 150, 200, 250]}
             />
           ) : (
-            <div className="empty">推定トルク (a.u.): --</div>
+            <div className="empty">{t('recent.torqueEmpty')}</div>
           )}
         </NeonPanel>
       </div>
@@ -669,20 +677,20 @@ export function AppShell() {
     <section className="section-shell history-shell">
       <div className="section-head-row">
         <SectionHeader
-          en="HISTORY"
-          title="履歴と分析"
-          description="過去のデータから帯域別に特徴を解析することができます"
+          en={t('history.en')}
+          title={t('history.title')}
+          description={t('history.description')}
         />
         <div className="section-head-actions">
           <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
-            データリセット
+            {t('history.reset')}
           </button>
         </div>
       </div>
       <div className="history-section">
         <NeonPanel className="history-left">
           <div className="panel-head">
-            <h3>シュートパワー帯域</h3>
+            <h3>{t('history.bandTitle')}</h3>
           </div>
           <ul className="band-list compact">
             {BAND_DEFS.map((band) => {
@@ -698,32 +706,37 @@ export function AppShell() {
                       {band.label}
                       <span className="inline-unit"> rpm</span>
                     </span>
-                    <span>{count}件</span>
+                    <span>{count}{t('history.countUnit')}</span>
                   </button>
                 </li>
               )
             })}
           </ul>
           <div className="history-summary-row history-summary-left">
-            シュートパワー統計: 合計 {historySummary.total}本 / 平均 {historySummary.avg}<span className="inline-unit"> rpm</span> / 最高 {historySummary.max}<span className="inline-unit"> rpm</span> / SD {historySummary.stddev}
+            {t('history.summary', {
+              total: historySummary.total,
+              avg: historySummary.avg,
+              max: historySummary.max,
+              stddev: historySummary.stddev
+            })}
           </div>
         </NeonPanel>
 
         <NeonPanel className="history-right">
           <div className="chart-head-row">
             <h3>
-              シュート波形：帯域{selectedBandId}
+              {t('history.waveformBand', { bandId: selectedBandId })}
               <span className="inline-unit"> rpm</span>
             </h3>
             <div className="shot-meta">
-              <span>ピーク(平均): {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : '--'}</span>
+              <span>{t('history.peakAvg')}: {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : t('common.none')}</span>
               <span>
-                {bandChartTarget === 'sp' ? '最大シュートパワー(平均): ' : '最大トルク(平均): '}
+                {bandChartTarget === 'sp' ? `${t('history.maxShotPowerAvg')}: ` : `${t('history.maxTorqueAvg')}: `}
                 {selectedBandChartMeta
                   ? `${bandChartTarget === 'sp'
                     ? Math.round(selectedBandChartMeta.maxValue)
                     : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'a.u.'}`
-                  : '--'}
+                  : t('common.none')}
               </span>
             </div>
           </div>
@@ -732,16 +745,16 @@ export function AppShell() {
               value={bandChartTarget}
               onChange={setBandChartTarget}
               options={[
-                { value: 'sp', label: 'シュートパワー' },
-                { value: 'tau', label: 'トルク (a.u.)' },
+                { value: 'sp', label: t('recent.spSeries') },
+                { value: 'tau', label: t('recent.torqueSeries') },
               ]}
             />
             <SegmentedToggle
               value={bandChartMode}
               onChange={setBandChartMode}
               options={[
-                { value: 'avg', label: '平均' },
-                { value: 'overlay', label: '重ね描き' },
+                { value: 'avg', label: t('history.modeAvg') },
+                { value: 'overlay', label: t('history.modeOverlay') },
               ]}
             />
           </div>
@@ -758,77 +771,77 @@ export function AppShell() {
             fixedYMax={bandChartTarget === 'tau' ? RECENT_Y_MAX_TAU : RECENT_Y_MAX_SP}
             fixedXTicks={[0, 100, 200, 300, 400]}
             fixedYTicks={bandChartTarget === 'tau' ? [0, 50, 100, 150, 200, 250] : [0, 3000, 6000, 9000, 12000]}
-            xLabel="時間 (ms)"
-            yLabel={bandChartTarget === 'tau' ? '入力トルク (推定, a.u.)' : 'シュートパワー (rpm)'}
+            xLabel={t('labels.timeMs')}
+            yLabel={bandChartTarget === 'tau' ? t('labels.inputTorque') : t('labels.shotPowerRpm')}
             maxOverlay={20}
           />
 
           <div className="stats-two-col">
             <div className="stats-col">
-              <h4>帯域のシュートパワー統計</h4>
-              <div>合計: {selectedBandShots.length}本</div>
-              <div>・ストリングランチャー: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}本</div>
-              <div>・ワインダーランチャー: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}本</div>
-              <div>・ロングワインダー: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}本</div>
-              <div>平均: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> rpm</span></> : '—'}</div>
-              <div>最高: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> rpm</span></> : '—'}</div>
-              <div>標準偏差: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : '—'}</div>
+              <h4>{t('history.statsTitle')}</h4>
+              <div>{t('history.total')}: {selectedBandShots.length}{t('labels.shots')}</div>
+              <div>・{t('launcher.string')}: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}{t('labels.shots')}</div>
+              <div>・{t('launcher.winder')}: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}{t('labels.shots')}</div>
+              <div>・{t('launcher.longWinder')}: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}{t('labels.shots')}</div>
+              <div>{t('history.avg')}: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> {t('labels.rpm')}</span></> : t('common.none')}</div>
+              <div>{t('history.max')}: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> {t('labels.rpm')}</span></> : t('common.none')}</div>
+              <div>{t('history.stddev')}: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : t('common.none')}</div>
             </div>
 
             <div className="stats-col detail">
-              <h4>詳細データ</h4>
+              <h4>{t('history.detailTitle')}</h4>
               <div className="detail-grid">
                 <div className="detail-col">
-                  <h5>シュート要素</h5>
+                  <h5>{t('history.shotFactors')}</h5>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.maxTau} />
                     <strong>{hasSelectedBandData ? `${selectedBandMaxTau} a.u.` : '—'}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.t_50} />
-                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.t_peak} />
-                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.slope_max} />
-                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.auc_0_peak} />
-                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
+                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.spike_score} />
-                    <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : t('common.none')}</strong>
                   </div>
                 </div>
 
                 <div className="detail-col">
-                  <h5>シュートタイプ判定</h5>
+                  <h5>{t('shootType.judge')}</h5>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.early_input_ratio} />
-                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.late_input_ratio} />
-                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.peak_input_time} />
-                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / 中央値 ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.input_stability} />
-                    <strong>{hasSelectedBandData ? `平均 ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / 中央値 ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
-                    <span>選択中ランチャー</span>
+                    <span>{t('launcher.selected')}</span>
                     <strong>{launcherLabel(launcherType)}</strong>
                   </div>
-                  <div className="judge-text">シュートタイプ判定: {selectedBandShootType}</div>
+                  <div className="judge-text">{t('shootType.judge')}: {selectedBandShootType}</div>
                 </div>
               </div>
             </div>
@@ -840,29 +853,29 @@ export function AppShell() {
 
   if (isMobileLayout) {
     const actionLabel = bleUi.connecting
-      ? '接続中...'
+      ? t('common.connecting')
       : bleUi.disconnecting
-        ? '切断中...'
+        ? t('common.disconnecting')
         : bleUi.connected
-          ? '切断する'
-          : '接続する'
+          ? t('common.disconnect')
+          : t('common.connect')
     const connectionLabel = bleUi.connecting
-      ? 'ベイバトルパス 接続中...'
+      ? t('ble.connecting')
       : bleUi.disconnecting
-        ? 'ベイバトルパス 切断中...'
+        ? t('ble.disconnecting')
         : bleUi.connected
-          ? 'ベイバトルパス 接続中'
-          : 'ベイバトルパス 未接続'
-    const attachLabel = bleUi.connected ? (isBayAttached ? 'ベイ装着' : 'ベイ未装着') : 'ベイ状態: 不明'
+          ? t('ble.connected')
+          : t('ble.disconnected')
+    const attachLabel = bleUi.connected ? (isBayAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')
 
     return (
       <main className="layout app-mobile app-compact neon-theme mobile-shell">
         <div className="mobile-pager" ref={mobilePagerRef}>
           <section className="mobile-page">
-            <SectionHeader en="SETTINGS" title="設定・接続" description="ランチャー選択とベイバトルパス接続" />
+            <SectionHeader en={t('settings.en')} title={t('mobile.settingsTitle')} description={t('mobile.settingsDesc')} />
             <NeonPanel className="mobile-settings-panel">
               <div className="mobile-launcher-group">
-                <div className="mobile-launcher-label">ランチャーを選んでください</div>
+                <div className="mobile-launcher-label">{t('launcher.selectPrompt')}</div>
                 <div className="mobile-launcher-buttons">
                   {LAUNCHER_OPTIONS.map((opt) => (
                     <button
@@ -872,7 +885,7 @@ export function AppShell() {
                       onClick={() => setLauncherType(opt.value)}
                       aria-pressed={launcherType === opt.value}
                     >
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -888,7 +901,7 @@ export function AppShell() {
               </button>
 
               {bleUi.connecting ? (
-                <div className="mobile-connect-help">ベイバトルパスを長押ししてください</div>
+                <div className="mobile-connect-help">{t('ble.holdToPair')}</div>
               ) : null}
 
               <div className="mobile-status-box">
@@ -908,14 +921,14 @@ export function AppShell() {
           <section className="mobile-page">{recentNode}</section>
           <section className="mobile-page">{historyNode}</section>
         </div>
-        <div className="mobile-page-dots" aria-label="ページインジケーター">
+        <div className="mobile-page-dots" aria-label="Page indicator">
           {[0, 1, 2].map((page) => (
             <button
               key={page}
               type="button"
               className={`mobile-page-dot ${activeMobilePage === page ? 'active' : ''}`}
               onClick={() => moveToMobilePage(page)}
-              aria-label={`ページ ${page + 1} に移動`}
+              aria-label={t('mobile.pageMove', { page: page + 1 })}
             >
               {activeMobilePage === page ? '●' : '○'}
             </button>

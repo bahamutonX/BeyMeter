@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { MetricHelp } from './metricLabels'
 
 export function MetricLabel({ help }: { help: MetricHelp }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement | null>(null)
 
@@ -24,18 +26,18 @@ export function MetricLabel({ help }: { help: MetricHelp }) {
 
   return (
     <span className={`metric-label ${open ? 'open' : ''}`} ref={rootRef}>
-      <span>{help.label}</span>
+      <span>{t(help.labelKey)}</span>
       <button
         className="metric-info-btn"
         onClick={() => setOpen((v) => !v)}
         type="button"
-        aria-label={`${help.label} の説明`}
+        aria-label={t('common.metricInfoAria', { label: t(help.labelKey) })}
       >
         ⓘ
       </button>
       <span className="metric-tooltip" role="tooltip">
-        {help.lines.map((line) => (
-          <span key={line}>{line}</span>
+        {help.lineKeys.map((lineKey) => (
+          <span key={lineKey}>{t(lineKey)}</span>
         ))}
       </span>
     </span>

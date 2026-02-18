@@ -1,0 +1,189 @@
+{
+  "app": {
+    "title": "BeyMeter"
+  },
+  "common": {
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "connecting": "Connecting...",
+    "disconnecting": "Disconnecting...",
+    "none": "--",
+    "metricInfoAria": "{{label}} description",
+    "mean": "Mean",
+    "median": "Median",
+    "noData": "No data"
+  },
+  "ble": {
+    "connected": "Beybattle Pass connected",
+    "disconnected": "Beybattle Pass disconnected",
+    "connecting": "Beybattle Pass connecting...",
+    "disconnecting": "Beybattle Pass disconnecting...",
+    "stateConnected": "connected",
+    "stateDisconnected": "disconnected",
+    "stateConnecting": "connecting...",
+    "stateDisconnecting": "disconnecting...",
+    "attachOn": "Bey attached",
+    "attachOff": "Bey detached",
+    "attachUnknown": "Bey status: unknown",
+    "commError": "Communication error",
+    "holdToPair": "Press and hold the Beybattle Pass button",
+    "deviceNotFound": "Beybattle Pass not found. Tap connect first, then press and hold the Beybattle Pass button.",
+    "connectFailed": "Connection failed. Tap connect first, then press and hold the Beybattle Pass button.",
+    "initFailed": "Bluetooth initialization failed. Restart the app and reconnect.",
+    "notAvailable": "Bluetooth is not available on this device."
+  },
+  "launcher": {
+    "label": "Launcher",
+    "selectPrompt": "Choose your launcher",
+    "selected": "Selected launcher",
+    "string": "String Launcher",
+    "winder": "Winder Launcher",
+    "longWinder": "Long Winder"
+  },
+  "shootType": {
+    "label": "Shot type",
+    "judge": "Shot type result",
+    "frontLoaded": "Early input focus",
+    "lateRise": "Late rise",
+    "constantInput": "Constant input",
+    "wavy": "Variable input"
+  },
+  "mobile": {
+    "settingsTitle": "Settings & Connection",
+    "settingsDesc": "Launcher selection and Beybattle Pass connection",
+    "connectedNotice": "Connected",
+    "guideAfterConnect": "Attach the bey and shoot. You can continue shooting.",
+    "pageMove": "Go to page {{page}}"
+  },
+  "recent": {
+    "en": "RECENT",
+    "title": "Shot Analysis",
+    "description": "Detect shots and show shot power and waveform",
+    "statusAria": "Recent status",
+    "chartStatusAria": "Connection status",
+    "recordSp": "Recorded Shot Power (official Beybattle Pass value)",
+    "estSp": "Estimated SP (waveform-corrected)",
+    "maxSp": "Max SP (peak)",
+    "waveformTitle": "Latest Shot Waveform",
+    "peak": "Peak",
+    "maxShotPower": "Max Shot Power",
+    "suspect": "Possible anomaly",
+    "spSeries": "Shot Power",
+    "torqueSeries": "Torque (a.u.)",
+    "torqueEmpty": "Estimated torque (a.u.): --",
+    "statusPrefix": "Beybattle Pass",
+    "beyPrefix": "Bey"
+  },
+  "history": {
+    "en": "HISTORY",
+    "title": "History & Analysis",
+    "description": "Analyze characteristics by band from past data",
+    "reset": "Reset Data",
+    "confirmReset": "Delete all history data. This cannot be undone. Continue?",
+    "bandTitle": "Shot Power Bands",
+    "countUnit": "items",
+    "summary": "Shot power stats: total {{total}} shots / avg {{avg}} rpm / max {{max}} rpm / SD {{stddev}}",
+    "waveformBand": "Waveform: band {{bandId}}",
+    "peakAvg": "Peak (avg)",
+    "maxShotPowerAvg": "Max Shot Power (avg)",
+    "maxTorqueAvg": "Max Torque (avg)",
+    "modeAvg": "Average",
+    "modeOverlay": "Overlay",
+    "statsTitle": "Band Shot Power Stats",
+    "total": "Total",
+    "avg": "Average",
+    "max": "Max",
+    "stddev": "Std Dev",
+    "detailTitle": "Detailed Data",
+    "shotFactors": "Shot factors"
+  },
+  "labels": {
+    "timeMs": "Time (ms)",
+    "shotPowerRpm": "Shot Power (rpm)",
+    "inputTorque": "Estimated Input Torque (a.u.)",
+    "rpm": "rpm",
+    "shots": "shots"
+  },
+  "settings": {
+    "en": "SETTINGS"
+  },
+  "rawlog": {
+    "title": "Beybattle Pass Raw Log",
+    "clear": "Clear Logs",
+    "back": "Back to Meter",
+    "connected": "Connected",
+    "attached": "Bey attached",
+    "packetCount": "Packets",
+    "headerSummary": "Header Summary",
+    "receivedAll": "Received Logs (all)",
+    "on": "ON",
+    "off": "OFF"
+  },
+  "metrics": {
+    "maxTau": {
+      "label": "Max Input Torque",
+      "line1": "Meaning: Estimated input strength from acceleration phase",
+      "line2": "High: strong initial input / Low: weak initial input",
+      "line3": "Note: judge trends across multiple shots"
+    },
+    "t_peak": {
+      "label": "t_peak",
+      "line1": "Meaning: Time from shot start to peak rotation (ms)",
+      "line2": "High: slower rise / Low: faster rise",
+      "line3": "Improve: strengthen early acceleration"
+    },
+    "t_50": {
+      "label": "t_50",
+      "line1": "Meaning: Time to reach 50% of peak (ms)",
+      "line2": "High: slow initial build / Low: quick initial build",
+      "line3": "Improve: smooth force ramp-up"
+    },
+    "slope_max": {
+      "label": "slope_max",
+      "line1": "Meaning: Maximum increase rate of rotation",
+      "line2": "High: sharp acceleration / Low: gentle acceleration",
+      "line3": "Improve: stronger first pull"
+    },
+    "auc_0_peak": {
+      "label": "auc_0_peak",
+      "line1": "Meaning: Total rotation from 0 to first peak",
+      "line2": "High: better build-up to peak / Low: weak opening",
+      "line3": "Improve: keep output continuous to peak"
+    },
+    "spike_score": {
+      "label": "spike_score",
+      "line1": "Meaning: Tendency of sudden spikes",
+      "line2": "Near 1: natural / Higher: noisy",
+      "line3": "Improve: avoid abrupt stops in pull"
+    },
+    "early_input_ratio": {
+      "label": "early_input_ratio",
+      "line1": "Meaning: Share of input concentrated in early phase",
+      "line2": "High: front-loaded / Low: more late input",
+      "line3": "Improve: reduce early over-bias for stable input"
+    },
+    "late_input_ratio": {
+      "label": "late_input_ratio",
+      "line1": "Meaning: Share of input near peak",
+      "line2": "High: late-rising tendency / Low: input spent early",
+      "line3": "Improve: tune late growth for target band"
+    },
+    "peak_input_time": {
+      "label": "peak_input_time",
+      "line1": "Meaning: Time when input acceleration is maximum (ms)",
+      "line2": "High: peak later / Low: peak earlier",
+      "line3": "Improve: avoid excessively late peaks"
+    },
+    "input_stability": {
+      "label": "input_stability",
+      "line1": "Meaning: Input stability (lower is steadier)",
+      "line2": "High: larger force fluctuations / Low: steadier pull",
+      "line3": "Improve: keep pull speed consistent"
+    }
+  },
+  "chart": {
+    "insufficientWaveform": "Insufficient waveform data",
+    "insufficientBandData": "No band data",
+    "insufficientSeries": "Not enough series"
+  }
+}
