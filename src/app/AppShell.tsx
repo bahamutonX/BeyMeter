@@ -1,0 +1,775 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { BleService } from '../features/ble/BleService'
+import type { ProtocolError, ShotProfile, ShotSnapshot } from '../features/ble/bbpTypes'
+import { ShotStore, type MeterViewState } from '../features/meter/ShotStore'
+import { isSuspectShot } from '../features/meter/stats'
+import { Header } from '../ui/Header'
+import { ProfileChart } from '../ui/ProfileChart'
+import { BandChart } from '../ui/BandChart'
+import { NeonPanel } from '../ui/NeonPanel'
+import { SectionHeader } from '../ui/SectionHeader'
+import { SegmentedToggle } from '../ui/SegmentedToggle'
+import { MetricLabel } from '../ui/MetricLabel'
+import { computeShotFeatures } from '../features/meter/shotFeatures'
+import { clearShots, listShots, saveShot, type PersistentShot } from '../features/meter/shotStorage'
+import { BAND_DEFS, buildBandStats } from '../features/meter/statsBands'
+import { detectDecaySegment } from '../analysis/decayDetect'
+import { fitFriction } from '../analysis/frictionFit'
+import { computeTorque } from '../analysis/torque'
+import { findFirstPeakIndex } from '../analysis/firstPeak'
+import { METRIC_LABELS } from '../ui/metricLabels'
+import { aggregateSeries } from '../analysis/aggregateSeries'
+
+const RECENT_X_MAX_MS = 400
+const RECENT_Y_MAX_SP = 12000
+const RECENT_Y_MAX_TAU = 250
+const BEY_SESSION_ID_KEY = 'beymeter.currentBeySessionId'
+
+type ChartTarget = 'sp' | 'tau'
+type ChartMode = 'avg' | 'overlay'
+
+interface BleUiState {
+  connected: boolean
+  connecting: boolean
+  disconnecting: boolean
+  isBeyAttached: boolean
+  lastError: string | null
+}
+
+function getOrCreateInitialSessionId(): string {
+  const existing = window.localStorage.getItem(BEY_SESSION_ID_KEY)
+  if (existing) {
+    return existing
+  }
+  const created = `bey-${Date.now()}`
+  window.localStorage.setItem(BEY_SESSION_ID_KEY, created)
+  return created
+}
+
+function ensureProfile(profile: ShotProfile): ShotProfile {
+  if (profile.profilePoints && profile.profilePoints.length === profile.tMs.length) {
+    return profile
+  }
+  const profilePoints = profile.tMs.map((tMs, i) => {
+    const prev = i > 0 ? profile.tMs[i - 1] : 0
+    return {
+      tMs,
+      sp: profile.sp[i] ?? 0,
+      nRefs: profile.nRefs[i] ?? 0,
+      dtMs: i > 0 ? tMs - prev : tMs,
+    }
+  })
+  return {
+    ...profile,
+    profilePoints,
+  }
+}
+
+function getStartAlignedPeakTimeMs(profile: ShotProfile | null, peakIndex: number): number {
+  if (!profile || profile.tMs.length === 0) return 0
+  const idx0 = profile.profilePoints.findIndex((p) => p.nRefs > 0 && p.sp > 0)
+  const t0 = idx0 >= 0 ? profile.profilePoints[idx0].tMs : profile.tMs[0]
+  const peakT = profile.tMs[Math.max(0, Math.min(peakIndex, profile.tMs.length - 1))] ?? t0
+  return Math.max(0, Math.round(peakT - t0))
+}
+
+function toSnapshot(shot: PersistentShot): ShotSnapshot {
+  return {
+    yourSp: shot.yourSp,
+    estSp: shot.estSp,
+    maxSp: shot.maxSp,
+    count: 0,
+    profile: ensureProfile(shot.profile),
+    estReason: 'persisted',
+    receivedAt: shot.createdAt,
+  }
+}
+
+function mean(values: number[]): number {
+  if (values.length === 0) return 0
+  return values.reduce((a, b) => a + b, 0) / values.length
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  return sorted[mid]
+}
+
+function stddev(values: number[]): number {
+  if (values.length === 0) return 0
+  const m = mean(values)
+  return Math.sqrt(mean(values.map((x) => (x - m) ** 2)))
+}
+
+function formatMaybe(value: number, hasData: boolean, digits = 2): string {
+  if (!hasData) return '—'
+  return Number(value.toFixed(digits)).toString()
+}
+
+function classifyDecayType(
+  alpha: number,
+  beta: number,
+  alphaBandMedian: number,
+  betaBandMedian: number,
+  smoothnessMean: number,
+  smoothBandMedian: number,
+  hasData: boolean,
+): string[] {
+  if (!hasData) return ['—']
+  const alphaHigh = alpha >= alphaBandMedian * 1.1
+  const alphaLow = alpha <= alphaBandMedian * 0.9
+  const betaHigh = Math.abs(beta) >= Math.abs(betaBandMedian) * 1.1
+  const betaLow = Math.abs(beta) <= Math.abs(betaBandMedian) * 0.9
+  const smoothBad = smoothnessMean >= smoothBandMedian * 1.1
+
+  const tags: string[] = []
+  if (alphaLow && betaLow) tags.push('持続型（減衰弱め）')
+  else if (alphaHigh && betaLow) tags.push('ベアリング抵抗大（持続弱め）')
+  else if (alphaLow && betaHigh) tags.push('高速失速型（空気抵抗/ブレ）')
+  else if (alphaHigh && betaHigh) tags.push('減衰強め型')
+  if (smoothBad) tags.push('ブレ注意')
+
+  return tags.length > 0 ? tags : ['標準域']
+}
+
+export function AppShell() {
+  const bleRef = useRef(new BleService())
+  const storeRef = useRef(new ShotStore())
+
+  const [bleUi, setBleUi] = useState<BleUiState>({
+    connected: false,
+    connecting: false,
+    disconnecting: false,
+    isBeyAttached: false,
+    lastError: null,
+  })
+  const [viewState, setViewState] = useState<MeterViewState>(storeRef.current.getState())
+  const [persistedShots, setPersistedShots] = useState<PersistentShot[]>([])
+  const [currentBeySessionId, setCurrentBeySessionId] = useState<string>(() =>
+    getOrCreateInitialSessionId(),
+  )
+  const currentBeySessionIdRef = useRef(currentBeySessionId)
+
+  const [selectedBandId, setSelectedBandId] = useState(BAND_DEFS[0].id)
+  const [currentChartTarget, setCurrentChartTarget] = useState<ChartTarget>('sp')
+  const [bandChartTarget, setBandChartTarget] = useState<ChartTarget>('sp')
+  const [bandChartMode, setBandChartMode] = useState<ChartMode>('avg')
+
+  const isBayAttached = bleUi.connected && bleUi.isBeyAttached
+
+  useEffect(() => {
+    currentBeySessionIdRef.current = currentBeySessionId
+    window.localStorage.setItem(BEY_SESSION_ID_KEY, currentBeySessionId)
+  }, [currentBeySessionId])
+
+  useEffect(() => {
+    const ble = bleRef.current
+
+    ble.setHandlers({
+      onState: (state) => {
+        setBleUi((prev) => ({
+          ...prev,
+          connected: state.connected,
+          disconnecting: false,
+          // Authoritative attached state from A0 payload decode in parser.
+          isBeyAttached: state.connected ? state.beyAttached : false,
+        }))
+      },
+      onShot: (snapshot: ShotSnapshot) => {
+        setBleUi((prev) => ({
+          ...prev,
+          lastError: null,
+        }))
+        const store = storeRef.current
+        store.push(snapshot)
+        setViewState(store.finalizeBundle(snapshot.receivedAt, snapshot))
+
+        if (!snapshot.profile) {
+          return
+        }
+
+        const profile = ensureProfile(snapshot.profile)
+
+        void (async () => {
+          const decaySegment = detectDecaySegment(profile)
+          const frictionFit = fitFriction(profile, decaySegment)
+          const { torqueSeries, torqueFeatures } = computeTorque(profile, frictionFit, decaySegment)
+
+          const shot: PersistentShot = {
+            id: `${snapshot.receivedAt}-${Math.random().toString(36).slice(2, 8)}`,
+            beySessionId: currentBeySessionIdRef.current,
+            createdAt: snapshot.receivedAt,
+            yourSp: snapshot.yourSp,
+            estSp: snapshot.estSp,
+            maxSp: snapshot.maxSp,
+            chosenSpType: 'est',
+            profile,
+            features: computeShotFeatures(profile),
+            decaySegment,
+            frictionFit,
+            torqueSeries,
+            torqueFeatures,
+            label: snapshot.estSp >= 10000 ? 'HIGH' : snapshot.estSp >= 3000 ? 'MID' : 'LOW',
+          }
+          await saveShot(shot)
+          const loaded = (await listShots()).map((s) => ({
+            ...s,
+            beySessionId: s.beySessionId ?? currentBeySessionIdRef.current,
+            profile: ensureProfile(s.profile),
+          }))
+          setPersistedShots(loaded)
+        })()
+      },
+      onError: (error: ProtocolError) => {
+        const msg = error.detail ? `${error.message}: ${error.detail}` : error.message
+        setBleUi((prev) => ({ ...prev, lastError: msg }))
+        setViewState(storeRef.current.setError(error))
+      },
+      onRaw: (packet) => {
+        void packet
+      },
+    })
+
+    void (async () => {
+      const loaded = (await listShots()).map((s) => ({
+        ...s,
+        beySessionId: s.beySessionId ?? currentBeySessionIdRef.current,
+        profile: ensureProfile(s.profile),
+      }))
+      const recalculated = loaded.map((s) => {
+        const decaySegment = detectDecaySegment(s.profile)
+        const frictionFit = fitFriction(s.profile, decaySegment)
+        const { torqueSeries, torqueFeatures } = computeTorque(s.profile, frictionFit, decaySegment)
+        return {
+          ...s,
+          features: computeShotFeatures(s.profile),
+          decaySegment,
+          frictionFit,
+          torqueSeries: torqueSeries ?? s.torqueSeries,
+          torqueFeatures: torqueFeatures ?? s.torqueFeatures,
+        }
+      })
+      setPersistedShots(recalculated)
+      setViewState(storeRef.current.hydrateHistory(recalculated.map(toSnapshot)))
+    })()
+
+    return () => {
+      ble.stopAutoReconnectLoop()
+      ble.disconnect()
+    }
+  }, [])
+
+  const latest = viewState.latest
+  const latestProfile = latest?.profile ?? null
+  const peakIndex = latestProfile ? findFirstPeakIndex(latestProfile.tMs, latestProfile.sp) : 0
+  const latestPersisted = useMemo(
+    () => (latest ? persistedShots.find((s) => s.createdAt === latest.receivedAt) ?? null : null),
+    [latest, persistedShots],
+  )
+  const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
+  const isYourSuspicious = useMemo(() => isSuspectShot(latest), [latest])
+  const latestPeakTimeMs = useMemo(
+    () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
+    [latestProfile, peakIndex],
+  )
+
+  const yourScores = useMemo(() => persistedShots.map((s) => s.yourSp), [persistedShots])
+  const historySummary = useMemo(
+    () => ({
+      total: yourScores.length,
+      avg: Number(mean(yourScores).toFixed(2)),
+      max: yourScores.length > 0 ? Math.max(...yourScores) : 0,
+      stddev: Number(stddev(yourScores).toFixed(2)),
+    }),
+    [yourScores],
+  )
+
+  const bandStats = useMemo(() => buildBandStats(persistedShots, (s) => s.estSp), [persistedShots])
+  const selectedBandShots = useMemo(() => {
+    const def = BAND_DEFS.find((d) => d.id === selectedBandId)
+    if (!def) return []
+    return persistedShots.filter((s) => {
+      const score = s.estSp
+      if (score < def.min) return false
+      if (def.maxExclusive !== null && score >= def.maxExclusive) return false
+      return true
+    })
+  }, [persistedShots, selectedBandId])
+
+  const currentSessionShots = useMemo(
+    () => persistedShots.filter((s) => (s.beySessionId ?? currentBeySessionId) === currentBeySessionId),
+    [currentBeySessionId, persistedShots],
+  )
+  const selectedBandSessionShots = useMemo(() => {
+    const def = BAND_DEFS.find((d) => d.id === selectedBandId)
+    if (!def) return []
+    return currentSessionShots.filter((s) => {
+      const score = s.estSp
+      if (score < def.min) return false
+      if (def.maxExclusive !== null && score >= def.maxExclusive) return false
+      return true
+    })
+  }, [currentSessionShots, selectedBandId])
+  const sessionIdsOrdered = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          persistedShots
+            .map((s) => s.beySessionId ?? currentBeySessionId)
+            .sort((a, b) => a.localeCompare(b)),
+        ),
+      ),
+    [currentBeySessionId, persistedShots],
+  )
+  const currentSessionIndex = Math.max(1, sessionIdsOrdered.indexOf(currentBeySessionId) + 1)
+
+  const selectedBandFriction = useMemo(() => {
+    const alpha = selectedBandSessionShots
+      .map((s) => s.frictionFit?.alpha)
+      .filter((x): x is number => x !== undefined)
+    const beta = selectedBandSessionShots
+      .map((s) => s.frictionFit?.beta)
+      .filter((x): x is number => x !== undefined)
+    const maxTau = selectedBandSessionShots
+      .map((s) => s.torqueFeatures?.maxInputTau ?? s.torqueFeatures?.maxTau)
+      .filter((x): x is number => x !== undefined)
+    return {
+      alphaMean: Number(mean(alpha).toFixed(6)),
+      betaMean: Number(mean(beta).toFixed(9)),
+      maxTauMean: Number(mean(maxTau).toFixed(6)),
+      nFit: alpha.length,
+    }
+  }, [selectedBandSessionShots])
+
+  const selectedBandStat = bandStats[selectedBandId]
+  const hasSelectedBandData = (selectedBandStat?.count ?? 0) > 0
+  const selectedBandChartMeta = useMemo(() => {
+    const series = selectedBandShots
+      .map((shot) => {
+        if (bandChartTarget === 'sp') {
+          const p = shot.profile
+          if (!p || p.tMs.length < 2 || p.sp.length < 2) return null
+          const t0 = p.tMs[0] ?? 0
+          return { t: p.tMs.map((t) => t - t0), y: p.sp }
+        }
+        const tau = shot.torqueSeries
+        if (!tau || tau.tMs.length < 2 || tau.tau.length < 2) return null
+        const t0 = tau.tMs[0] ?? 0
+        return { t: tau.tMs.map((t) => t - t0), y: tau.tau }
+      })
+      .filter((s): s is { t: number[]; y: number[] } => s !== null)
+
+    if (series.length === 0) return null
+    const agg = aggregateSeries(series, 0, RECENT_X_MAX_MS, 10)
+    let peakTimeMs = 0
+    let maxValue = Number.NaN
+    for (let i = 0; i < agg.newTime.length; i += 1) {
+      const v = agg.mean[i]
+      if (!Number.isFinite(v)) continue
+      if (!Number.isFinite(maxValue) || v > maxValue) {
+        maxValue = v
+        peakTimeMs = agg.newTime[i] ?? 0
+      }
+    }
+    if (!Number.isFinite(maxValue)) return null
+    return { peakTimeMs: Math.round(peakTimeMs), maxValue }
+  }, [bandChartTarget, selectedBandShots])
+  const maxBandCount = useMemo(
+    () => Math.max(1, ...BAND_DEFS.map((b) => bandStats[b.id]?.count ?? 0)),
+    [bandStats],
+  )
+  const bandAlphaValues = useMemo(
+    () =>
+      selectedBandSessionShots
+        .map((s) => s.frictionFit?.alpha)
+        .filter((x): x is number => x !== undefined),
+    [selectedBandSessionShots],
+  )
+  const bandBetaValues = useMemo(
+    () =>
+      selectedBandSessionShots
+        .map((s) => s.frictionFit?.beta)
+        .filter((x): x is number => x !== undefined),
+    [selectedBandSessionShots],
+  )
+  const alphaBandMedian = useMemo(() => median(bandAlphaValues), [bandAlphaValues])
+  const betaBandMedian = useMemo(() => median(bandBetaValues), [bandBetaValues])
+  const smoothBandMedian = selectedBandStat?.featureSummary.smoothness.p50 ?? 0
+  const smoothnessMean = selectedBandStat?.featureSummary.smoothness.mean ?? 0
+  const beyTypeTags = useMemo(
+    () =>
+      classifyDecayType(
+        selectedBandFriction.alphaMean,
+        selectedBandFriction.betaMean,
+        alphaBandMedian,
+        betaBandMedian,
+        smoothnessMean,
+        smoothBandMedian,
+        selectedBandFriction.nFit > 0 && hasSelectedBandData,
+      ),
+    [
+      alphaBandMedian,
+      betaBandMedian,
+      hasSelectedBandData,
+      selectedBandFriction.alphaMean,
+      selectedBandFriction.betaMean,
+      selectedBandFriction.nFit,
+      smoothBandMedian,
+      smoothnessMean,
+    ],
+  )
+  const beyTypeLabel = useMemo(() => {
+    const tags = beyTypeTags.filter((t) => t !== '—').slice(0, 2)
+    return tags.length > 0 ? tags.join('、') : '—'
+  }, [beyTypeTags])
+
+  async function handleConnect() {
+    setBleUi((prev) => ({ ...prev, lastError: null, connecting: true }))
+    try {
+      await bleRef.current.connect()
+    } catch (error) {
+      setBleUi((prev) => ({
+        ...prev,
+        lastError: error instanceof Error ? error.message : String(error),
+      }))
+    } finally {
+      setBleUi((prev) => ({ ...prev, connecting: false }))
+    }
+  }
+
+  function handleDisconnect() {
+    setBleUi((prev) => ({
+      ...prev,
+      disconnecting: true,
+      isBeyAttached: false,
+    }))
+    try {
+      bleRef.current.disconnect()
+    } finally {
+      setBleUi((prev) => ({
+        ...prev,
+        connected: false,
+        disconnecting: false,
+        isBeyAttached: false,
+      }))
+    }
+  }
+
+  async function handleResetAll() {
+    const ok = window.confirm('履歴データをすべて削除します。元に戻せません。実行しますか？')
+    if (!ok) {
+      return
+    }
+    await clearShots()
+    setPersistedShots([])
+    setViewState(storeRef.current.hydrateHistory([]))
+    setSelectedBandId(BAND_DEFS[0].id)
+  }
+
+  function handleBeySwap() {
+    const ok = window.confirm('ベイを交換しましたか？ α/β推定用のデータを新しくします')
+    if (!ok) return
+    const newSessionId = `bey-${Date.now()}`
+    setCurrentBeySessionId(newSessionId)
+  }
+
+  return (
+    <main className="layout app-mobile app-compact neon-theme">
+      <Header
+        bleConnected={bleUi.connected}
+        connecting={bleUi.connecting}
+        disconnecting={bleUi.disconnecting}
+        beyAttached={isBayAttached}
+        lastError={bleUi.lastError}
+        onConnect={() => void handleConnect()}
+        onDisconnect={handleDisconnect}
+      />
+
+      <section className="section-shell recent-shell">
+        <SectionHeader
+          en="RECENT"
+          title="直近のシュート"
+          description="いまの1本を表示"
+        />
+        <div className="current-section">
+          <NeonPanel className="current-left">
+            <article className="main-card">
+              <h2>記録シュートパワー</h2>
+              <div className="main-value">
+                {latest ? (
+                  <>
+                    {latest.yourSp}
+                    <span className="value-unit">rpm</span>
+                  </>
+                ) : (
+                  '--'
+                )}
+              </div>
+              <div className="card-help">BBP本体に記録された公式値</div>
+              {isYourSuspicious ? <span className="warn-badge">異常値の可能性</span> : null}
+            </article>
+            <div className="sub-card-row">
+              <article className="sub-card">
+                <h3>推定シュートパワー</h3>
+                <div className="sub-value">
+                  {latest ? (
+                    <>
+                      {latest.estSp}
+                      <span className="value-unit">rpm</span>
+                    </>
+                  ) : (
+                    '--'
+                  )}
+                </div>
+                <div className="card-help">波形から補正した実力寄りの値</div>
+              </article>
+              <article className="sub-card">
+                <h3>最大シュートパワー</h3>
+                <div className="sub-value">
+                  {latest ? (
+                    <>
+                      {latest.maxSp}
+                      <span className="value-unit">rpm</span>
+                    </>
+                  ) : (
+                    '--'
+                  )}
+                </div>
+                <div className="card-help">波形中で最も高かったピーク値</div>
+              </article>
+            </div>
+          </NeonPanel>
+
+          <NeonPanel className="current-right">
+            <div className="chart-head-row">
+              <h3>直近のシュート波形</h3>
+              <div className="shot-meta">
+                <span>ピーク: {latest ? `${latestPeakTimeMs}ms` : '--'}</span>
+                <span>最大シュートパワー: {latest ? `${latest.maxSp} rpm` : '--'}</span>
+              </div>
+            </div>
+            <SegmentedToggle
+              value={currentChartTarget}
+              onChange={setCurrentChartTarget}
+              options={[
+                { value: 'sp', label: 'シュートパワー' },
+                { value: 'tau', label: 'トルク (a.u.)' },
+              ]}
+            />
+            {currentChartTarget === 'sp' ? (
+              <ProfileChart
+                profile={latestProfile}
+                peakIndex={peakIndex}
+                timeMode="start"
+                yLabel="シュートパワー (rpm)"
+                fixedXMaxMs={RECENT_X_MAX_MS}
+                fixedYMax={RECENT_Y_MAX_SP}
+                fixedXTicks={[0, 100, 200, 300, 400]}
+                fixedYTicks={[0, 3000, 6000, 9000, 12000]}
+              />
+            ) : latestTorqueSeries ? (
+              <ProfileChart
+                profile={{
+                  profilePoints: latestTorqueSeries.tMs.map((tMs, i) => ({
+                    tMs,
+                    sp: latestTorqueSeries.tau[i] ?? 0,
+                    nRefs: 0,
+                    dtMs: i > 0 ? tMs - latestTorqueSeries.tMs[i - 1] : tMs,
+                  })),
+                  tMs: latestTorqueSeries.tMs,
+                  sp: latestTorqueSeries.tau,
+                  nRefs: latestTorqueSeries.tau.map(() => 0),
+                }}
+                peakIndex={Math.max(0, latestTorqueSeries.tau.findIndex((x) => x === Math.max(...latestTorqueSeries.tau)))}
+                timeMode="start"
+                yLabel="入力トルク (推定, a.u.)"
+                fixedXMaxMs={RECENT_X_MAX_MS}
+                fixedYMax={RECENT_Y_MAX_TAU}
+                fixedXTicks={[0, 100, 200, 300, 400]}
+                fixedYTicks={[0, 50, 100, 150, 200, 250]}
+              />
+            ) : (
+              <div className="empty">推定トルク (a.u.): --</div>
+            )}
+          </NeonPanel>
+        </div>
+      </section>
+
+      <section className="section-shell history-shell">
+        <div className="section-head-row">
+          <SectionHeader
+            en="HISTORY"
+            title="履歴と分析"
+            description="過去のデータから帯域別に特徴を解析することができます"
+          />
+          <div className="section-head-actions">
+            <button className="mini-btn subtle history-reset-btn" onClick={handleBeySwap} type="button">
+              ベイ交換
+            </button>
+            <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
+              データリセット
+            </button>
+          </div>
+        </div>
+        <div className="history-section">
+          <NeonPanel className="history-left">
+            <div className="panel-head">
+              <h3>シュートパワー帯域</h3>
+            </div>
+            <ul className="band-list compact">
+              {BAND_DEFS.map((band) => {
+                const stat = bandStats[band.id]
+                const active = selectedBandId === band.id
+                const count = stat?.count ?? 0
+                const ratio = Math.round((count / maxBandCount) * 100)
+                return (
+                  <li key={band.id}>
+                    <button className={`band-item ${active ? 'active' : ''}`} onClick={() => setSelectedBandId(band.id)} type="button">
+                      <span className="band-bar" style={{ width: `${ratio}%` }} />
+                      <span>
+                        {band.label}
+                        <span className="inline-unit"> rpm</span>
+                      </span>
+                      <span>{count}件</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="history-summary-row history-summary-left">
+              シュートパワー統計: 合計 {historySummary.total}本 / 平均 {historySummary.avg}<span className="inline-unit"> rpm</span> / 最高 {historySummary.max}<span className="inline-unit"> rpm</span> / SD {historySummary.stddev}
+            </div>
+          </NeonPanel>
+
+          <NeonPanel className="history-right">
+            <div className="chart-head-row">
+              <h3>
+                シュート波形：帯域{selectedBandId}
+                <span className="inline-unit"> rpm</span>
+              </h3>
+              <div className="shot-meta">
+                <span>ピーク(平均): {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : '--'}</span>
+                <span>
+                  {bandChartTarget === 'sp' ? '最大シュートパワー(平均): ' : '最大トルク(平均): '}
+                  {selectedBandChartMeta
+                    ? `${bandChartTarget === 'sp'
+                      ? Math.round(selectedBandChartMeta.maxValue)
+                      : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'a.u.'}`
+                    : '--'}
+                </span>
+              </div>
+            </div>
+            <div className="segment-row">
+              <SegmentedToggle
+                value={bandChartTarget}
+                onChange={setBandChartTarget}
+                options={[
+                  { value: 'sp', label: 'シュートパワー' },
+                  { value: 'tau', label: 'トルク (a.u.)' },
+                ]}
+              />
+              <SegmentedToggle
+                value={bandChartMode}
+                onChange={setBandChartMode}
+                options={[
+                  { value: 'avg', label: '平均' },
+                  { value: 'overlay', label: '重ね描き' },
+                ]}
+              />
+            </div>
+
+            <BandChart
+              shots={selectedBandShots}
+              mode={bandChartMode}
+              seriesTarget={bandChartTarget}
+              alignment="start"
+              normalize={false}
+              rangeStart={0}
+              rangeEnd={RECENT_X_MAX_MS}
+              fixedYMin={0}
+              fixedYMax={bandChartTarget === 'tau' ? RECENT_Y_MAX_TAU : RECENT_Y_MAX_SP}
+              fixedXTicks={[0, 100, 200, 300, 400]}
+              fixedYTicks={bandChartTarget === 'tau' ? [0, 50, 100, 150, 200, 250] : [0, 3000, 6000, 9000, 12000]}
+              xLabel="時間 (ms)"
+              yLabel={bandChartTarget === 'tau' ? '入力トルク (推定, a.u.)' : 'シュートパワー (rpm)'}
+              maxOverlay={20}
+            />
+
+            <div className="stats-two-col">
+              <div className="stats-col">
+                <h4>帯域のシュートパワー統計</h4>
+                <div>合計: {selectedBandShots.length}本</div>
+                <div>平均: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> rpm</span></> : '—'}</div>
+                <div>最高: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> rpm</span></> : '—'}</div>
+                <div>標準偏差: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : '—'}</div>
+              </div>
+
+              <div className="stats-col detail">
+                <h4>詳細データ</h4>
+                <div className="detail-grid">
+                  <div className="detail-col">
+                    <h5>シュート要素</h5>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.maxTau} />
+                      <strong>{selectedBandFriction.nFit > 0 ? `${selectedBandFriction.maxTauMean} a.u.` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.t_50} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.t_50.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandStat.featureSummary.t_50.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.t_peak} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.t_peak.mean, hasSelectedBandData, 3)}ms / 中央値 ${formatMaybe(selectedBandStat.featureSummary.t_peak.p50, hasSelectedBandData, 3)}ms` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.slope_max} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.slope_max.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.slope_max.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.auc_0_peak} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.auc_0_peak.mean, hasSelectedBandData, 3)}SP / 中央値 ${formatMaybe(selectedBandStat.featureSummary.auc_0_peak.p50, hasSelectedBandData, 3)}SP` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.spike_score} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.spike_score.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.spike_score.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                    </div>
+                  </div>
+
+                  <div className="detail-col">
+                    <h5>ベイブレード特性推定（ベイ＋環境）</h5>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.alpha} />
+                      <strong>{selectedBandFriction.nFit > 0 ? selectedBandFriction.alphaMean : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.beta} />
+                      <strong>{selectedBandFriction.nFit > 0 ? selectedBandFriction.betaMean : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <MetricLabel help={METRIC_LABELS.smoothness} />
+                      <strong>{selectedBandStat ? `平均 ${formatMaybe(selectedBandStat.featureSummary.smoothness.mean, hasSelectedBandData, 3)} / 中央値 ${formatMaybe(selectedBandStat.featureSummary.smoothness.p50, hasSelectedBandData, 3)}` : '—'}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <span>推定本数</span>
+                      <strong>{selectedBandFriction.nFit}</strong>
+                    </div>
+                    <div className="compact-metric">
+                      <span>ベイセッション</span>
+                      <strong>#{currentSessionIndex}（n={currentSessionShots.length}）</strong>
+                    </div>
+                    <div className="judge-text">ベイ＋環境判定: {beyTypeLabel}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </NeonPanel>
+        </div>
+      </section>
+    </main>
+  )
+}
