@@ -79,7 +79,9 @@ function computeProfile(bytesByHeader: Map<number, Uint8Array>, bbpSp: number): 
       }
       const sp = Math.floor(7_500_000 / nRefs)
       et += dtMs
-      const tMs = Math.round(et)
+      // Keep cumulative time in fractional milliseconds for better peak-time fidelity.
+      // UI can round for display, but analysis should retain full precision.
+      const tMs = et
       profEtMs.push(tMs)
       profSp.push(sp)
       profNRefs.push(nRefs)

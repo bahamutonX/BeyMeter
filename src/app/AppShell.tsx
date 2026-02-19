@@ -52,8 +52,40 @@ function getInitialLauncherType(): LauncherType {
 }
 
 function ensureProfile(profile: ShotProfile): ShotProfile {
-  if (profile.profilePoints && profile.profilePoints.length === profile.tMs.length) {
-    return profile
+  const length = Math.min(profile.sp.length, profile.nRefs.length, profile.tMs.length)
+  const canRebuildFromNRefs =
+    length > 0 && profile.nRefs.slice(0, length).some((n) => Number.isFinite(n) && n > 0)
+
+  if (canRebuildFromNRefs) {
+    let et = 0
+    const tMs: number[] = []
+    const sp: number[] = []
+    const nRefs: number[] = []
+    const profilePoints: Array<{ tMs: number; sp: number; nRefs: number; dtMs: number }> = []
+
+    for (let i = 0; i < length; i += 1) {
+      const s = profile.sp[i] ?? 0
+      const nr = profile.nRefs[i] ?? 0
+      const fallbackDt = i > 0 ? Math.max(0, (profile.tMs[i] ?? 0) - (profile.tMs[i - 1] ?? 0)) : (profile.tMs[0] ?? 0)
+      const dtMs = nr > 0 ? nr / 125 : fallbackDt
+      et += dtMs
+      tMs.push(et)
+      sp.push(s)
+      nRefs.push(nr)
+      profilePoints.push({
+        tMs: et,
+        sp: s,
+        nRefs: nr,
+        dtMs,
+      })
+    }
+
+    return {
+      profilePoints,
+      tMs,
+      sp,
+      nRefs,
+    }
   }
   const profilePoints = profile.tMs.map((tMs, i) => {
     const prev = i > 0 ? profile.tMs[i - 1] : 0
@@ -75,7 +107,7 @@ function getStartAlignedPeakTimeMs(profile: ShotProfile | null, peakIndex: numbe
   const idx0 = profile.profilePoints.findIndex((p) => p.nRefs > 0 && p.sp > 0)
   const t0 = idx0 >= 0 ? profile.profilePoints[idx0].tMs : profile.tMs[0]
   const peakT = profile.tMs[Math.max(0, Math.min(peakIndex, profile.tMs.length - 1))] ?? t0
-  return Math.max(0, Math.round(peakT - t0))
+  return Number(Math.max(0, peakT - t0).toFixed(2))
 }
 
 function toSnapshot(shot: PersistentShot): ShotSnapshot {
