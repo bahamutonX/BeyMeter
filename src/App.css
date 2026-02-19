@@ -391,9 +391,9 @@
 
 .shoot-type-label {
   margin-top: 2px;
-  font-size: 14px;
-  font-weight: 400;
-  color: #9ec2dd;
+  font-size: 16px;
+  font-weight: 600;
+  color: #d4ebff;
 }
 
 .inline-unit {
@@ -472,7 +472,26 @@
 }
 
 .launcher-line {
-  font-size: 14px;
+  font-size: 16px;
+  color: #d4ebff;
+  font-weight: 600;
+}
+
+.recent-extra-line {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.best-badge {
+  margin-top: 8px;
+  display: inline-block;
+  border: 1px solid rgba(143, 245, 198, 0.55);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c6ffe7;
+  background: rgba(59, 185, 138, 0.2);
 }
 
 .history-section {
@@ -971,6 +990,10 @@
 
   .launcher-line,
   .shoot-type-label {
+    font-size: 14px;
+  }
+
+  .recent-extra-line {
     font-size: 12px;
   }
 

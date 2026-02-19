@@ -12,8 +12,6 @@ import type { BleNotifyHandlers, BleServiceClient, BleState } from './types'
 
 const LAST_DEVICE_ID_KEY = 'beymeter.lastDeviceId'
 const LAST_DEVICE_NAME_KEY = 'beymeter.lastDeviceName'
-const A0_ATTACHED_VALUES = new Set([0x04, 0x14])
-
 export class WebBluetoothBleService implements BleServiceClient {
   private device: BluetoothDevice | null = null
 
@@ -24,6 +22,7 @@ export class WebBluetoothBleService implements BleServiceClient {
   private state: BleState = {
     connected: false,
     beyAttached: false,
+    bbpTotalShots: null,
   }
 
   private handlers: BleNotifyHandlers = {}
@@ -34,6 +33,7 @@ export class WebBluetoothBleService implements BleServiceClient {
     this.state = {
       connected: false,
       beyAttached: false,
+      bbpTotalShots: null,
     }
     this.emitState()
   }
@@ -56,8 +56,9 @@ export class WebBluetoothBleService implements BleServiceClient {
     this.handlers.onRaw?.(packet)
 
     if (packet.header === HEADER_ATTACH) {
-      const attachCode = packet.bytes[3] ?? 0x00
-      this.state.beyAttached = A0_ATTACHED_VALUES.has(attachCode)
+      this.parser.updateMap(packet)
+      this.state.beyAttached = this.parser.getBeyAttached()
+      this.state.bbpTotalShots = this.parser.getBbpTotalShots()
       this.emitState()
       return
     }
@@ -159,6 +160,7 @@ export class WebBluetoothBleService implements BleServiceClient {
     this.state = {
       connected: false,
       beyAttached: false,
+      bbpTotalShots: null,
     }
     this.emitState()
   }

@@ -17,8 +17,6 @@ import type { BleNotifyHandlers, BleServiceClient, BleState } from './types'
 
 const LAST_NATIVE_DEVICE_ID_KEY = 'beymeter.native.lastDeviceId'
 const LAST_NATIVE_DEVICE_NAME_KEY = 'beymeter.native.lastDeviceName'
-const A0_ATTACHED_VALUES = new Set([0x04, 0x14])
-
 export class NativeBleService implements BleServiceClient {
   private handlers: BleNotifyHandlers = {}
 
@@ -27,6 +25,7 @@ export class NativeBleService implements BleServiceClient {
   private state: BleState = {
     connected: false,
     beyAttached: false,
+    bbpTotalShots: null,
   }
 
   private reconnectTimer: number | null = null
@@ -69,6 +68,7 @@ export class NativeBleService implements BleServiceClient {
       this.handlers.onError?.(this.toProtocolError(error, 'native connect failed'))
       this.state.connected = false
       this.state.beyAttached = false
+      this.state.bbpTotalShots = null
       this.emitState()
       throw error
     } finally {
@@ -89,6 +89,7 @@ export class NativeBleService implements BleServiceClient {
     this.state = {
       connected: false,
       beyAttached: false,
+      bbpTotalShots: null,
     }
     this.parser.clearMap()
     this.emitState()
@@ -122,6 +123,7 @@ export class NativeBleService implements BleServiceClient {
     this.connectedDeviceId = null
     this.state.connected = false
     this.state.beyAttached = false
+    this.state.bbpTotalShots = null
     this.emitState()
   }
 
@@ -231,8 +233,9 @@ export class NativeBleService implements BleServiceClient {
 
         this.handlers.onRaw?.(packet)
         if (packet.header === HEADER_ATTACH) {
-          const attachCode = packet.bytes[3] ?? 0x00
-          this.state.beyAttached = A0_ATTACHED_VALUES.has(attachCode)
+          this.parser.updateMap(packet)
+          this.state.beyAttached = this.parser.getBeyAttached()
+          this.state.bbpTotalShots = this.parser.getBbpTotalShots()
           this.emitState()
           return
         }

@@ -2,7 +2,7 @@ import type { ShotProfile } from '../features/ble/bbpTypes'
 import type { FrictionFitResult } from './frictionFit'
 import type { DecaySegment } from './decayDetect'
 import { findFirstPeakIndex } from './firstPeak'
-import { derivativeCentral, smoothMovingAverage } from './signal'
+import { derivativeCentral } from './signal'
 
 export interface TorqueSeries {
   tMs: number[]
@@ -19,34 +19,33 @@ export interface TorqueFeatures {
 
 export function computeTorque(
   profile: ShotProfile | null,
-  fit: FrictionFitResult | null,
+  _fit: FrictionFitResult | null,
   segment?: DecaySegment | null,
 ): { torqueSeries: TorqueSeries | null; torqueFeatures: TorqueFeatures | null } {
-  if (!profile || !fit || profile.sp.length < 2) {
+  if (!profile || profile.sp.length < 2) {
     return { torqueSeries: null, torqueFeatures: null }
   }
 
   const t = profile.tMs
-  const w = smoothMovingAverage(profile.sp, 5)
-  const dw = derivativeCentral(t, w)
+  const w = profile.sp
+  // Input proxy: angular acceleration from the measured RPM/time profile.
+  // Unit: rpm/ms
+  const accel = derivativeCentral(t, w).map((v) => (Number.isFinite(v) ? v : 0))
 
-  const tau = w.map((omega, i) => dw[i] + fit.alpha * omega + fit.beta * omega * omega)
-  const cleanTau = tau.map((v) => (Number.isFinite(v) ? v : 0))
-
-  // Prefer pre-decay positive peak as "input torque" estimate.
+  // Prefer pre-decay positive peak as "max input" estimate.
   const peakIndex = findFirstPeakIndex(t, w)
   const inputEnd = Math.max(
     0,
     Math.min(
-      cleanTau.length - 1,
+      accel.length - 1,
       segment ? Math.min(peakIndex, Math.max(0, segment.startIndex - 1)) : peakIndex,
     ),
   )
   let maxInputTau = Number.NEGATIVE_INFINITY
   let maxIdx = 0
   for (let i = 0; i <= inputEnd; i += 1) {
-    if (cleanTau[i] > maxInputTau) {
-      maxInputTau = cleanTau[i]
+    if (accel[i] > maxInputTau) {
+      maxInputTau = accel[i]
       maxIdx = i
     }
   }
@@ -55,17 +54,17 @@ export function computeTorque(
   }
 
   let aucTauPos = 0
-  for (let i = 1; i < cleanTau.length; i += 1) {
+  for (let i = 1; i < accel.length; i += 1) {
     const dt = t[i] - t[i - 1]
     if (dt <= 0) continue
-    const y0 = Math.max(0, cleanTau[i - 1])
-    const y1 = Math.max(0, cleanTau[i])
+    const y0 = Math.max(0, accel[i - 1])
+    const y1 = Math.max(0, accel[i])
     aucTauPos += ((y0 + y1) * dt) / 2
   }
 
   const secondDiffs: number[] = []
-  for (let i = 1; i < cleanTau.length - 1; i += 1) {
-    secondDiffs.push(Math.abs(cleanTau[i + 1] - 2 * cleanTau[i] + cleanTau[i - 1]))
+  for (let i = 1; i < accel.length - 1; i += 1) {
+    secondDiffs.push(Math.abs(accel[i + 1] - 2 * accel[i] + accel[i - 1]))
   }
   const tauSmoothness =
     secondDiffs.length > 0
@@ -75,7 +74,7 @@ export function computeTorque(
   return {
     torqueSeries: {
       tMs: [...t],
-      tau: cleanTau,
+      tau: accel,
     },
     torqueFeatures: {
       maxInputTau: Number(maxInputTau.toFixed(6)),

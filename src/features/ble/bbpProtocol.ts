@@ -182,6 +182,8 @@ export class BbpProtocol {
 
   private latestBeyAttached = false
 
+  private latestBbpTotalShots: number | null = null
+
   parsePacket(value: DataView | Uint8Array): BbpPacket {
     const bytes =
       value instanceof Uint8Array
@@ -224,6 +226,8 @@ export class BbpProtocol {
       // A0[3] = 0x00 => detached
       const attachCode = packet.bytes[3] ?? 0x00
       this.latestBeyAttached = A0_ATTACHED_VALUES.has(attachCode)
+      this.latestBbpTotalShots =
+        packet.bytes.length > 10 ? readU16LE(packet.bytes, 9) : null
       return null
     }
 
@@ -253,6 +257,10 @@ export class BbpProtocol {
 
   getBeyAttached(): boolean {
     return this.latestBeyAttached
+  }
+
+  getBbpTotalShots(): number | null {
+    return this.latestBbpTotalShots
   }
 
   clearMap(): void {

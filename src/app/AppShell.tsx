@@ -28,7 +28,6 @@ import {
 
 const RECENT_X_MAX_MS = 400
 const RECENT_Y_MAX_SP = 12000
-const RECENT_Y_MAX_TAU = 250
 const LAUNCHER_TYPE_KEY = 'beymeter.launcherType'
 
 type ChartTarget = 'sp' | 'tau'
@@ -39,6 +38,7 @@ interface BleUiState {
   connecting: boolean
   disconnecting: boolean
   isBeyAttached: boolean
+  bbpTotalShots: number | null
   lastError: string | null
 }
 
@@ -187,6 +187,7 @@ export function AppShell() {
     connecting: false,
     disconnecting: false,
     isBeyAttached: false,
+    bbpTotalShots: null,
     lastError: null,
   })
   const [viewState, setViewState] = useState<MeterViewState>(storeRef.current.getState())
@@ -267,6 +268,7 @@ export function AppShell() {
           disconnecting: false,
           // Authoritative attached state from A0 payload decode in parser.
           isBeyAttached: state.connected ? state.beyAttached : false,
+          bbpTotalShots: state.connected ? state.bbpTotalShots : null,
         }))
       },
       onShot: (snapshot: ShotSnapshot) => {
@@ -382,6 +384,17 @@ export function AppShell() {
     () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
     [latestProfile, peakIndex],
   )
+  const latestMaxSpText = useMemo(
+    () => (latest ? `${latest.maxSp} rpm` : t('common.none')),
+    [latest, t],
+  )
+  const latestPersonalBest = useMemo(() => {
+    if (!latestPersisted) return false
+    const prevBest = persistedShots
+      .filter((shot) => shot.id !== latestPersisted.id)
+      .reduce((acc, shot) => Math.max(acc, shot.yourSp), 0)
+    return latestPersisted.yourSp > prevBest
+  }, [latestPersisted, persistedShots])
 
   const yourScores = useMemo(() => persistedShots.map((s) => s.yourSp), [persistedShots])
   const historySummary = useMemo(
@@ -503,6 +516,7 @@ export function AppShell() {
       ...prev,
       disconnecting: true,
       isBeyAttached: false,
+      bbpTotalShots: null,
     }))
     try {
       bleRef.current.disconnect()
@@ -514,6 +528,7 @@ export function AppShell() {
         connected: false,
         disconnecting: false,
         isBeyAttached: false,
+        bbpTotalShots: null,
       }))
     }
   }
@@ -601,6 +616,13 @@ export function AppShell() {
             <div className="shoot-type-label">
               {t('shootType.label')}: {latest ? shootTypeLabel(latestShootTypeKey) : t('common.none')}
             </div>
+            <div className="card-help recent-extra-line">
+              {t('recent.maxShotPower')}: {latestMaxSpText}
+            </div>
+            <div className="card-help recent-extra-line">
+              {t('recent.bbpTotalShots')}: {bleUi.bbpTotalShots ?? t('common.none')}
+            </div>
+            {latestPersonalBest ? <div className="best-badge">{t('recent.shotPowerUpdated')}</div> : null}
           </article>
         </NeonPanel>
 
@@ -664,9 +686,7 @@ export function AppShell() {
               timeMode="start"
               yLabel={t('labels.inputTorque')}
               fixedXMaxMs={RECENT_X_MAX_MS}
-              fixedYMax={RECENT_Y_MAX_TAU}
               fixedXTicks={[0, 100, 200, 300, 400]}
-              fixedYTicks={[0, 50, 100, 150, 200, 250]}
             />
           ) : (
             <div className="empty">{t('recent.torqueEmpty')}</div>
@@ -738,7 +758,7 @@ export function AppShell() {
                 {selectedBandChartMeta
                   ? `${bandChartTarget === 'sp'
                     ? Math.round(selectedBandChartMeta.maxValue)
-                    : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'a.u.'}`
+                    : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'rpm/ms'}`
                   : t('common.none')}
               </span>
             </div>
@@ -770,10 +790,10 @@ export function AppShell() {
             normalize={false}
             rangeStart={0}
             rangeEnd={RECENT_X_MAX_MS}
-            fixedYMin={0}
-            fixedYMax={bandChartTarget === 'tau' ? RECENT_Y_MAX_TAU : RECENT_Y_MAX_SP}
+            fixedYMin={bandChartTarget === 'tau' ? undefined : 0}
+            fixedYMax={bandChartTarget === 'tau' ? undefined : RECENT_Y_MAX_SP}
             fixedXTicks={[0, 100, 200, 300, 400]}
-            fixedYTicks={bandChartTarget === 'tau' ? [0, 50, 100, 150, 200, 250] : [0, 3000, 6000, 9000, 12000]}
+            fixedYTicks={bandChartTarget === 'tau' ? undefined : [0, 3000, 6000, 9000, 12000]}
             xLabel={t('labels.timeMs')}
             yLabel={bandChartTarget === 'tau' ? t('labels.inputTorque') : t('labels.shotPowerRpm')}
             maxOverlay={20}
@@ -798,7 +818,7 @@ export function AppShell() {
                   <h5>{t('history.shotFactors')}</h5>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.maxTau} />
-                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau} a.u.` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau} rpm/ms` : '—'}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.t_50} />

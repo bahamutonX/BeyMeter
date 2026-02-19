@@ -67,10 +67,12 @@
     "waveformTitle": "Latest Shot Waveform",
     "peak": "Peak",
     "maxShotPower": "Max Shot Power",
+    "bbpTotalShots": "Beybattle Pass Total Shots",
+    "shotPowerUpdated": "Shot power updated!",
     "suspect": "Possible anomaly",
     "spSeries": "Shot Power",
-    "torqueSeries": "Torque (a.u.)",
-    "torqueEmpty": "Estimated torque (a.u.): --",
+    "torqueSeries": "Input rate (rpm/ms)",
+    "torqueEmpty": "Input rate (rpm/ms): --",
     "statusPrefix": "Beybattle Pass",
     "beyPrefix": "Bey"
   },
@@ -86,7 +88,7 @@
     "waveformBand": "Waveform: band {{bandId}}",
     "peakAvg": "Peak (avg)",
     "maxShotPowerAvg": "Max Shot Power (avg)",
-    "maxTorqueAvg": "Max Torque (avg)",
+    "maxTorqueAvg": "Max Input Rate (avg)",
     "modeAvg": "Average",
     "modeOverlay": "Overlay",
     "statsTitle": "Band Shot Power Stats",
@@ -100,7 +102,7 @@
   "labels": {
     "timeMs": "Time (ms)",
     "shotPowerRpm": "Shot Power (rpm)",
-    "inputTorque": "Estimated Input Torque (a.u.)",
+    "inputTorque": "Input rate (rpm/ms)",
     "rpm": "rpm",
     "shots": "shots"
   },
@@ -146,9 +148,9 @@
   },
   "metrics": {
     "maxTau": {
-      "label": "Max Input Torque",
-      "line1": "Meaning: Estimated input strength from acceleration phase",
-      "line2": "High: strong initial input / Low: weak initial input",
+      "label": "Max Input Rate",
+      "line1": "Meaning: Maximum rise rate of RPM (rpm/ms)",
+      "line2": "High: sharper initial acceleration / Low: gentler rise",
       "line3": "Note: judge trends across multiple shots"
     },
     "t_peak": {

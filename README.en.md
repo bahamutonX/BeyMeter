@@ -32,11 +32,7 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
 
 ### Shot Analysis
 - Recorded Shot Power
-  - Value recorded by the Battle Pass device
-- Estimated SP
-  - Corrected value inferred from the waveform
-- Max SP
-  - Peak value in the waveform
+  - The value recorded by the Battle Pass device (main value shown in current UI)
 - Launcher
   - Launcher type used for that shot
 - Shot Type
@@ -45,8 +41,8 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
 
 ### Latest Shot Waveform
 - X-axis: Time (ms)
-- Toggle between `Shot Power` and `Torque (a.u.)`
-- Peak time and max value are shown at the top-right
+- Toggle between `Shot Power` and `Input rate (rpm/ms)`
+- Peak time and max shot power are shown at the top-right
 
 ### History & Analysis
 - History is grouped by shot-power bands (step = 1000)
@@ -55,7 +51,7 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
   - Launcher breakdown (3 types)
   - Mean / Max / Standard deviation
 - Detail metrics (mean / p50):
-  - Max input torque
+  - Max input rate
   - t_50
   - t_peak
   - slope_max
@@ -66,9 +62,9 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
 
 ## Launcher Recording
 - Choose launcher with 3 buttons in the header:
-  - String Launcher
-  - Winder Launcher
-  - Long Winder
+  - String
+  - Winder
+  - Long/Dragon
 - Selected launcher is persisted with each shot
 - Band statistics can compare launcher counts
 

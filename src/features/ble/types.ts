@@ -3,6 +3,7 @@ import type { BbpPacket, ParserStatus, ProtocolError, ShotSnapshot } from './bbp
 export interface BleState {
   connected: boolean
   beyAttached: boolean
+  bbpTotalShots: number | null
 }
 
 export interface BleNotifyHandlers {
