@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { BleService } from '../features/ble/BleService'
 import type { ProtocolError, ShotProfile, ShotSnapshot } from '../features/ble/bbpTypes'
 import { ShotStore, type MeterViewState } from '../features/meter/ShotStore'
-import { isSuspectShot } from '../features/meter/stats'
 import { Header } from '../ui/Header'
 import { ProfileChart } from '../ui/ProfileChart'
 import { BandChart } from '../ui/BandChart'
@@ -379,7 +378,6 @@ export function AppShell() {
     [latestPersisted?.launcherType, launcherType, launcherLabel],
   )
   const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
-  const isYourSuspicious = useMemo(() => isSuspectShot(latest), [latest])
   const latestPeakTimeMs = useMemo(
     () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
     [latestProfile, peakIndex],
@@ -603,53 +601,26 @@ export function AppShell() {
             <div className="shoot-type-label">
               {t('shootType.label')}: {latest ? shootTypeLabel(latestShootTypeKey) : t('common.none')}
             </div>
-            {isYourSuspicious ? <span className="warn-badge">{t('recent.suspect')}</span> : null}
           </article>
-          <div className="sub-card-row">
-            <article className="sub-card">
-              <h3>{t('recent.estSp')}</h3>
-              <div className="sub-value">
-                {latest ? (
-                  <>
-                    {latest.estSp}
-                    <span className="value-unit">rpm</span>
-                  </>
-                ) : (
-                  '--'
-                )}
-              </div>
-            </article>
-            <article className="sub-card">
-              <h3>{t('recent.maxSp')}</h3>
-              <div className="sub-value">
-                {latest ? (
-                  <>
-                    {latest.maxSp}
-                    <span className="value-unit">rpm</span>
-                  </>
-                ) : (
-                  '--'
-                )}
-              </div>
-            </article>
-          </div>
         </NeonPanel>
 
         <NeonPanel className="current-right">
           <div className="chart-head-row">
             <h3>{t('recent.waveformTitle')}</h3>
-            <div className="chart-status-meta" aria-label={t('recent.chartStatusAria')}>
-              <span>
-                {bleUi.connecting
-                  ? `${t('recent.statusPrefix')}: ${t('ble.stateConnecting')}`
-                  : bleUi.disconnecting
-                    ? `${t('recent.statusPrefix')}: ${t('ble.stateDisconnecting')}`
-                    : bleUi.connected
-                      ? `${t('recent.statusPrefix')}: ${t('ble.stateConnected')}`
-                      : `${t('recent.statusPrefix')}: ${t('ble.stateDisconnected')}`}
-              </span>
-              <span>{bleUi.connected ? (isBayAttached ? `${t('recent.beyPrefix')}: ${t('rawlog.on')}` : `${t('recent.beyPrefix')}: ${t('rawlog.off')}`) : `${t('recent.beyPrefix')}: ${t('ble.attachUnknown')}`}</span>
-            </div>
+            {isMobileLayout ? (
+              <div className="chart-status-meta" aria-label={t('recent.chartStatusAria')}>
+                <span>
+                  {bleUi.connecting
+                    ? `${t('recent.statusPrefix')}: ${t('ble.stateConnecting')}`
+                    : bleUi.disconnecting
+                      ? `${t('recent.statusPrefix')}: ${t('ble.stateDisconnecting')}`
+                      : bleUi.connected
+                        ? `${t('recent.statusPrefix')}: ${t('ble.stateConnected')}`
+                        : `${t('recent.statusPrefix')}: ${t('ble.stateDisconnected')}`}
+                </span>
+                <span>{bleUi.connected ? (isBayAttached ? `${t('recent.beyPrefix')}: ${t('rawlog.on')}` : `${t('recent.beyPrefix')}: ${t('rawlog.off')}`) : `${t('recent.beyPrefix')}: ${t('ble.attachUnknown')}`}</span>
+              </div>
+            ) : null}
             <div className="shot-meta">
               <span>{t('recent.peak')}: {latest ? `${latestPeakTimeMs}ms` : t('common.none')}</span>
               <span>{t('recent.maxShotPower')}: {latest ? `${latest.maxSp} rpm` : t('common.none')}</span>

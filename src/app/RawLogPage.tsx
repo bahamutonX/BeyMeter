@@ -50,59 +50,61 @@ function buildContextMap(packets: BbpPacket[], startIndex: number): Map<number, 
   return map
 }
 
-function decodePacket(packet: BbpPacket, contextMap: Map<number, BbpPacket>): string[] {
+type TLike = (key: string, options?: Record<string, unknown>) => string
+
+function decodePacket(packet: BbpPacket, contextMap: Map<number, BbpPacket>, t: TLike): string[] {
   const b = packet.bytes
   const h = packet.header
 
   if (h === HEADER_ATTACH) {
     const state = b[3] ?? 0
     const attached = state === 0x04 || state === 0x14
-    const event = attached ? '装着イベント' : '未装着/射出イベント'
+    const event = attached ? t('rawlog.decode.attachEvent') : t('rawlog.decode.detachEvent')
     const maxSp = readU16LE(b, 7)
     const totalShots = readU16LE(b, 9)
     const uid = Array.from(b.slice(11, 17))
       .map((v) => v.toString(16).toUpperCase().padStart(2, '0'))
       .join(' ')
     return [
-      'A0 着脱・状態通知',
-      `state(Off2-3): ${toHexByte(state)} (${event})`,
-      `Off4(変動値): ${b[4] ?? 0}`,
-      `Off7-8 最大SP: ${maxSp} rpm`,
-      `Off9-10 累積シュート数: ${totalShots}`,
-      `Off11-16 UID: ${uid}`,
+      t('rawlog.decode.a0Title'),
+      t('rawlog.decode.a0State', { value: toHexByte(state), event }),
+      t('rawlog.decode.a0Offset4', { value: b[4] ?? 0 }),
+      t('rawlog.decode.a0MaxSp', { value: maxSp }),
+      t('rawlog.decode.a0TotalShots', { value: totalShots }),
+      t('rawlog.decode.a0Uid', { value: uid }),
     ]
   }
 
   if (h >= HEADER_PROF_FIRST && h <= HEADER_PROF_LAST) {
     const base = (h - HEADER_PROF_FIRST) * 8 + 1
-    const lines: string[] = [`${toHexByte(h)} プロファイル (8点)`]
+    const lines: string[] = [t('rawlog.decode.profileTitle', { header: toHexByte(h) })]
     for (let i = 1, slot = 0; i < b.length; i += 2, slot += 1) {
       const nRefs = readU16LE(b, i)
       if (nRefs === 0) continue
       const dtMs = nRefs / 125
       const sp = Math.floor(7_500_000 / nRefs)
       const ch = base + slot
-      lines.push(`ch${ch}: nRefs=${nRefs}, dt=${dtMs.toFixed(3)}ms, SP=${sp}rpm`)
+      lines.push(t('rawlog.decode.profileLine', { ch, nRefs, dtMs: dtMs.toFixed(3), sp }))
     }
     if (lines.length === 1) {
-      lines.push('有効データなし（0埋め）')
+      lines.push(t('rawlog.decode.profileNoData'))
     }
     return lines
   }
 
   if (h >= HEADER_LIST_FIRST && h <= HEADER_LIST_LAST) {
     const base = (h - HEADER_LIST_FIRST) * 8 + 1
-    const lines: string[] = [`${toHexByte(h)} シュートパワー履歴`] 
+    const lines: string[] = [t('rawlog.decode.listTitle', { header: toHexByte(h) })]
     const maxSlots = h === HEADER_LIST_LAST ? 2 : 8
     for (let slot = 0; slot < maxSlots; slot += 1) {
       const off = 1 + slot * 2
       const sp = readU16LE(b, off)
-      lines.push(`#${base + slot}: ${sp} rpm (off${off}-${off + 1})`)
+      lines.push(t('rawlog.decode.listLine', { index: base + slot, sp, offStart: off, offEnd: off + 1 }))
     }
     if (h === HEADER_LIST_LAST) {
-      lines.push(`Off7-8 最大SP: ${readU16LE(b, 7)} rpm`)
-      lines.push(`Off9-10 シュート数: ${readU16LE(b, 9)}`)
-      lines.push(`Off11 リスト上のシュート数: ${b[11] ?? 0}`)
+      lines.push(t('rawlog.decode.b6MaxSp', { value: readU16LE(b, 7) }))
+      lines.push(t('rawlog.decode.b6ShotCount', { value: readU16LE(b, 9) }))
+      lines.push(t('rawlog.decode.b6ListCount', { value: b[11] ?? 0 }))
     }
     return lines
   }
@@ -123,16 +125,19 @@ function decodePacket(packet: BbpPacket, contextMap: Map<number, BbpPacket>): st
     }
     const sum8 = sum & 0xff
     return [
-      `${toHexByte(h)} チェックサム`,
-      `Off16 checksum: ${checksum}`,
+      t('rawlog.decode.checksumTitle', { header: toHexByte(h) }),
+      t('rawlog.decode.checksumByte', { value: checksum }),
       complete
-        ? `B0..B6合計&0xFF: ${sum8} (${sum8 === checksum ? '一致' : '不一致'})`
-        : 'B0..B6 が揃っていないため再計算不可',
-      '仕様: checksum は B0..B6 の Off1..16 合計の下位8bit',
+        ? t('rawlog.decode.checksumCompare', {
+          value: sum8,
+          result: sum8 === checksum ? t('rawlog.decode.match') : t('rawlog.decode.mismatch'),
+        })
+        : t('rawlog.decode.checksumMissing'),
+      t('rawlog.decode.checksumRule'),
     ]
   }
 
-  return [`${toHexByte(h)} 未定義ヘッダ`]
+  return [t('rawlog.decode.unknownHeader', { header: toHexByte(h) })]
 }
 
 export function RawLogPage() {
@@ -212,9 +217,9 @@ export function RawLogPage() {
   const decodedRows = useMemo(() => {
     return state.packets.map((p, idx) => ({
       packet: p,
-      decoded: decodePacket(p, buildContextMap(state.packets, idx)),
+      decoded: decodePacket(p, buildContextMap(state.packets, idx), t),
     }))
-  }, [state.packets])
+  }, [state.packets, t])
 
   return (
     <main className="layout app-mobile app-compact neon-theme rawlog-page">

@@ -36,9 +36,9 @@
     "label": "Launcher",
     "selectPrompt": "Choose your launcher",
     "selected": "Selected launcher",
-    "string": "String Launcher",
-    "winder": "Winder Launcher",
-    "longWinder": "Long Winder"
+    "string": "String",
+    "winder": "Winder",
+    "longWinder": "Long/Dragon"
   },
   "shootType": {
     "label": "Shot type",
@@ -61,7 +61,7 @@
     "description": "Detect shots and show shot power and waveform",
     "statusAria": "Recent status",
     "chartStatusAria": "Connection status",
-    "recordSp": "Recorded Shot Power (official Beybattle Pass value)",
+    "recordSp": "Recorded Shot Power",
     "estSp": "Estimated SP (waveform-corrected)",
     "maxSp": "Max SP (peak)",
     "waveformTitle": "Latest Shot Waveform",
@@ -114,10 +114,35 @@
     "connected": "Connected",
     "attached": "Bey attached",
     "packetCount": "Packets",
-    "headerSummary": "Header Summary",
     "receivedAll": "Received Logs (all)",
     "on": "ON",
-    "off": "OFF"
+    "off": "OFF",
+    "decode": {
+      "attachEvent": "attach event",
+      "detachEvent": "detached/shot event",
+      "a0Title": "A0 attach/detach status",
+      "a0State": "state(Off2-3): {{value}} ({{event}})",
+      "a0Offset4": "Off4(variable): {{value}}",
+      "a0MaxSp": "Off7-8 max SP: {{value}} rpm",
+      "a0TotalShots": "Off9-10 total shots: {{value}}",
+      "a0Uid": "Off11-16 UID: {{value}}",
+      "profileTitle": "{{header}} profile (8 points)",
+      "profileLine": "ch{{ch}}: nRefs={{nRefs}}, dt={{dtMs}}ms, SP={{sp}}rpm",
+      "profileNoData": "No valid data (zero-filled)",
+      "listTitle": "{{header}} shot-power history",
+      "listLine": "#{{index}}: {{sp}} rpm (off{{offStart}}-{{offEnd}})",
+      "b6MaxSp": "Off7-8 max SP: {{value}} rpm",
+      "b6ShotCount": "Off9-10 shot count: {{value}}",
+      "b6ListCount": "Off11 list shot count: {{value}}",
+      "checksumTitle": "{{header}} checksum",
+      "checksumByte": "Off16 checksum: {{value}}",
+      "checksumCompare": "B0..B6 sum&0xFF: {{value}} ({{result}})",
+      "match": "match",
+      "mismatch": "mismatch",
+      "checksumMissing": "Cannot recompute because B0..B6 is incomplete",
+      "checksumRule": "Rule: checksum is low 8 bits of sum(B0..B6, Off1..16)",
+      "unknownHeader": "{{header}} unknown header"
+    }
   },
   "metrics": {
     "maxTau": {

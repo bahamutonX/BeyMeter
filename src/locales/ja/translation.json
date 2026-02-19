@@ -36,9 +36,9 @@
     "label": "ランチャー",
     "selectPrompt": "ランチャーを選んでください",
     "selected": "選択中ランチャー",
-    "string": "ストリングランチャー",
-    "winder": "ワインダーランチャー",
-    "longWinder": "ロングワインダー"
+    "string": "ストリング",
+    "winder": "ワインダー",
+    "longWinder": "ロング／ドラゴン"
   },
   "shootType": {
     "label": "シュートタイプ",
@@ -61,7 +61,7 @@
     "description": "シュートを検知してシュートパワーとシュート波形を表示",
     "statusAria": "直近画面ステータス",
     "chartStatusAria": "接続状態",
-    "recordSp": "記録シュートパワー（ベイバトルパス公式値）",
+    "recordSp": "記録シュートパワー",
     "estSp": "推定SP（波形補正値）",
     "maxSp": "最大SP（ピーク値）",
     "waveformTitle": "直近のシュート波形",
@@ -114,10 +114,35 @@
     "connected": "接続",
     "attached": "ベイ装着",
     "packetCount": "パケット数",
-    "headerSummary": "ヘッダ集計",
     "receivedAll": "受信ログ（全件）",
     "on": "ON",
-    "off": "OFF"
+    "off": "OFF",
+    "decode": {
+      "attachEvent": "装着イベント",
+      "detachEvent": "未装着/射出イベント",
+      "a0Title": "A0 着脱・状態通知",
+      "a0State": "state(Off2-3): {{value}} ({{event}})",
+      "a0Offset4": "Off4(変動値): {{value}}",
+      "a0MaxSp": "Off7-8 最大SP: {{value}} rpm",
+      "a0TotalShots": "Off9-10 累積シュート数: {{value}}",
+      "a0Uid": "Off11-16 UID: {{value}}",
+      "profileTitle": "{{header}} プロファイル (8点)",
+      "profileLine": "ch{{ch}}: nRefs={{nRefs}}, dt={{dtMs}}ms, SP={{sp}}rpm",
+      "profileNoData": "有効データなし（0埋め）",
+      "listTitle": "{{header}} シュートパワー履歴",
+      "listLine": "#{{index}}: {{sp}} rpm (off{{offStart}}-{{offEnd}})",
+      "b6MaxSp": "Off7-8 最大SP: {{value}} rpm",
+      "b6ShotCount": "Off9-10 シュート数: {{value}}",
+      "b6ListCount": "Off11 リスト上のシュート数: {{value}}",
+      "checksumTitle": "{{header}} チェックサム",
+      "checksumByte": "Off16 checksum: {{value}}",
+      "checksumCompare": "B0..B6合計&0xFF: {{value}} ({{result}})",
+      "match": "一致",
+      "mismatch": "不一致",
+      "checksumMissing": "B0..B6 が揃っていないため再計算不可",
+      "checksumRule": "仕様: checksum は B0..B6 の Off1..16 合計の下位8bit",
+      "unknownHeader": "{{header}} 未定義ヘッダ"
+    }
   },
   "metrics": {
     "maxTau": {
