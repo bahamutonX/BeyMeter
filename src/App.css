@@ -14,6 +14,63 @@
   --safe-top: env(safe-area-inset-top, 0px);
 }
 
+.opening-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 24px;
+  background:
+    radial-gradient(60% 45% at 20% 20%, rgba(88, 224, 255, 0.18), transparent 70%),
+    radial-gradient(60% 45% at 80% 80%, rgba(255, 85, 199, 0.2), transparent 70%),
+    linear-gradient(160deg, #060d1c 0%, #09142b 55%, #130b2b 100%);
+}
+
+.opening-logo {
+  font-size: clamp(42px, 8vw, 76px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #e8fbff;
+  text-shadow: 0 0 20px rgba(88, 224, 255, 0.42), 0 0 34px rgba(255, 85, 199, 0.28);
+  animation: openingPulse 900ms ease-in-out infinite alternate;
+}
+
+.opening-credit {
+  font-size: clamp(14px, 2.2vw, 18px);
+  color: #b8d8ee;
+}
+
+.opening-credit a {
+  color: #7ee9ff;
+  text-decoration: none;
+}
+
+.rawlog-secret-link {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  z-index: 8;
+  font-size: 10px;
+  color: rgba(146, 187, 215, 0.42);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+
+.rawlog-secret-link:hover {
+  color: rgba(162, 225, 255, 0.8);
+}
+
+@keyframes openingPulse {
+  from {
+    transform: translateY(0);
+    opacity: 0.92;
+  }
+  to {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
 #root {
   min-height: 100dvh;
 }

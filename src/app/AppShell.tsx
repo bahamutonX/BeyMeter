@@ -957,6 +957,7 @@ export function AppShell() {
             </button>
           ))}
         </div>
+        <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
       </main>
     )
   }
@@ -966,6 +967,7 @@ export function AppShell() {
       {headerNode}
       {recentNode}
       {historyNode}
+      <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
     </main>
   )
 }

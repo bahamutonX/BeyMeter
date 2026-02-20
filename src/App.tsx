@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import './App.css'
 import { AppShell } from './app/AppShell'
 import { RawLogPage } from './app/RawLogPage'
@@ -16,10 +17,40 @@ function resolveCurrentPath(): string {
 }
 
 function App() {
-  const path = resolveCurrentPath()
-  if (path.endsWith('/rawlog') || path.includes('/rawlog/')) {
+  const [path] = useState(() => resolveCurrentPath())
+  const isRawLogPath =
+    path.endsWith('/RawLog') ||
+    path.includes('/RawLog/') ||
+    path.endsWith('/rawlog') ||
+    path.includes('/rawlog/')
+  const [showOpening, setShowOpening] = useState(() => !isRawLogPath)
+
+  useEffect(() => {
+    if (isRawLogPath) return
+    const timer = window.setTimeout(() => {
+      setShowOpening(false)
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [isRawLogPath])
+
+  if (isRawLogPath) {
     return <RawLogPage />
   }
+
+  if (showOpening) {
+    return (
+      <main className="opening-screen" aria-label="BeyMeter opening">
+        <div className="opening-logo">BeyMeter</div>
+        <div className="opening-credit">
+          by{' '}
+          <a href="https://x.com/bahamutonX" target="_blank" rel="noreferrer">
+            @BahamutonX
+          </a>
+        </div>
+      </main>
+    )
+  }
+
   return <AppShell />
 }
 

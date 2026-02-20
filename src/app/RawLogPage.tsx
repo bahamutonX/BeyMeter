@@ -284,7 +284,7 @@ export function RawLogPage() {
                   : t('common.connect')}
           </button>
           <button className="mini-btn subtle" type="button" onClick={clearLogs}>{t('rawlog.clear')}</button>
-          <a className="mini-btn subtle" href="/">{t('rawlog.back')}</a>
+          <a className="mini-btn subtle" href="./">{t('rawlog.back')}</a>
         </div>
         <section className="rawlog-status">
           <div>{t('rawlog.connected')}: {state.connected ? t('rawlog.on') : t('rawlog.off')}</div>
