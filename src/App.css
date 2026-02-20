@@ -60,6 +60,65 @@
   color: rgba(162, 225, 255, 0.8);
 }
 
+.connect-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 9, 20, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.connect-modal-card {
+  width: min(88vw, 420px);
+  border: 1px solid rgba(88, 224, 255, 0.38);
+  border-radius: 14px;
+  background: rgba(10, 23, 46, 0.96);
+  box-shadow: 0 16px 36px rgba(0, 8, 20, 0.46);
+  padding: 16px;
+  color: #d9efff;
+  text-align: center;
+}
+
+.connect-modal-card.connecting {
+  border-color: rgba(88, 224, 255, 0.42);
+}
+
+.connect-modal-card.success {
+  border-color: rgba(130, 245, 188, 0.48);
+}
+
+.connect-modal-card.error {
+  border-color: rgba(255, 120, 136, 0.48);
+}
+
+.connect-modal-card h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #e8fbff;
+}
+
+.connect-modal-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #b9d8ee;
+}
+
+.connect-modal-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.mobile-page-hint {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(163, 197, 221, 0.7);
+}
+
 @keyframes openingPulse {
   from {
     transform: translateY(0);

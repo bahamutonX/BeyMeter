@@ -7,6 +7,7 @@
     "disconnect": "切断する",
     "connecting": "接続中...",
     "disconnecting": "切断中...",
+    "cancel": "キャンセル",
     "none": "--",
     "metricInfoAria": "{{label}} の説明",
     "mean": "平均",
@@ -27,6 +28,11 @@
     "attachUnknown": "ベイ状態: 不明",
     "commError": "通信エラー",
     "holdToPair": "ベイバトルパスを長押ししてください",
+    "nativeHoldToConnect": "ベイバトルパスを長押しして接続してください",
+    "nativeConnected": "接続しました！",
+    "nativeConnectFailed": "接続できませんでした。再度お試しください。",
+    "connectTimeout": "接続がタイムアウトしました。接続ボタンを押してからベイバトルパスを長押ししてください。",
+    "connectFailedSimple": "接続できませんでした。",
     "deviceNotFound": "ベイバトルパスが見つかりません。接続ボタンを押してからベイバトルパスを長押ししてください。",
     "connectFailed": "接続に失敗しました。接続ボタンを押してからベイバトルパスを長押ししてください。",
     "initFailed": "Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。",
@@ -53,7 +59,8 @@
     "settingsDesc": "ランチャー選択とベイバトルパス接続",
     "connectedNotice": "接続できました",
     "guideAfterConnect": "ベイを装着して、シュートしてください。連続してシュートできます。",
-    "pageMove": "ページ {{page}} に移動"
+    "pageMove": "ページ {{page}} に移動",
+    "swipeHint": "左右スワイプ、または下のドットでページ移動できます"
   },
   "recent": {
     "en": "RECENT",

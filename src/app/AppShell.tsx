@@ -10,6 +10,7 @@ import { NeonPanel } from '../ui/NeonPanel'
 import { SectionHeader } from '../ui/SectionHeader'
 import { SegmentedToggle } from '../ui/SegmentedToggle'
 import { MetricLabel } from '../ui/MetricLabel'
+import { isCapacitorNativeEnvironment } from '../features/ble/bleEnvironment'
 import { computeShotFeatures, type ShotFeatures } from '../features/meter/shotFeatures'
 import { clearShots, listShots, saveShot, type PersistentShot } from '../features/meter/shotStorage'
 import { BAND_DEFS, buildBandStats } from '../features/meter/statsBands'
@@ -29,9 +30,11 @@ import {
 const RECENT_X_MAX_MS = 400
 const RECENT_Y_MAX_SP = 12000
 const LAUNCHER_TYPE_KEY = 'beymeter.launcherType'
+const NATIVE_CONNECT_TIMEOUT_MS = 15000
 
 type ChartTarget = 'sp' | 'tau'
 type ChartMode = 'avg' | 'overlay'
+type ConnectOverlayState = 'hidden' | 'connecting' | 'success' | 'error'
 
 interface BleUiState {
   connected: boolean
@@ -149,6 +152,9 @@ function formatMaybe(value: number, hasData: boolean, digits = 2): string {
 
 function toLocalizedErrorMessage(t: (key: string) => string, message: string): string {
   const m = message.toLowerCase()
+  if (m.includes('timeout')) {
+    return t('ble.connectTimeout')
+  }
   if (m.includes('bbp device not found') || m.includes('device not found')) {
     return t('ble.deviceNotFound')
   }
@@ -202,10 +208,14 @@ export function AppShell() {
   const [isMobileLayout, setIsMobileLayout] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
   )
+  const isMobileLayoutRef = useRef(isMobileLayout)
   const [activeMobilePage, setActiveMobilePage] = useState(0)
   const [recentNotice, setRecentNotice] = useState<string | null>(null)
   const [sessionShotCount, setSessionShotCount] = useState(0)
+  const [connectOverlayState, setConnectOverlayState] = useState<ConnectOverlayState>('hidden')
   const mobilePagerRef = useRef<HTMLDivElement | null>(null)
+  const wasConnectedRef = useRef(false)
+  const connectAttemptRef = useRef(0)
 
   const isBayAttached = bleUi.connected && bleUi.isBeyAttached
 
@@ -213,6 +223,10 @@ export function AppShell() {
     launcherTypeRef.current = launcherType
     window.localStorage.setItem(LAUNCHER_TYPE_KEY, launcherType)
   }, [launcherType])
+
+  useEffect(() => {
+    isMobileLayoutRef.current = isMobileLayout
+  }, [isMobileLayout])
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 980px)')
@@ -265,15 +279,25 @@ export function AppShell() {
         setBleUi((prev) => ({
           ...prev,
           connected: state.connected,
+          connecting: state.connected ? false : prev.connecting,
           disconnecting: false,
           // Authoritative attached state from A0 payload decode in parser.
           isBeyAttached: state.connected ? state.beyAttached : false,
           bbpTotalShots: state.connected ? state.bbpTotalShots : null,
+          lastError: state.connected ? null : prev.lastError,
         }))
       },
       onShot: (snapshot: ShotSnapshot) => {
         setSessionShotCount((prev) => prev + 1)
         setRecentNotice(null)
+        if (isMobileLayoutRef.current) {
+          const el = mobilePagerRef.current
+          if (el) {
+            const width = el.clientWidth || 1
+            el.scrollTo({ left: width, behavior: 'smooth' })
+          }
+          setActiveMobilePage(1)
+        }
         setBleUi((prev) => ({
           ...prev,
           lastError: null,
@@ -327,8 +351,6 @@ export function AppShell() {
         void packet
       },
     })
-    ble.autoReconnectLoop(2500)
-
     void (async () => {
       const loaded = (await listShots()).map((s) => ({
         ...s,
@@ -353,10 +375,30 @@ export function AppShell() {
     })()
 
     return () => {
-      ble.stopAutoReconnectLoop()
       ble.disconnect()
     }
   }, [t])
+
+  useEffect(() => {
+    const justConnected = !wasConnectedRef.current && bleUi.connected
+    wasConnectedRef.current = bleUi.connected
+    if (!justConnected) {
+      return
+    }
+    if (isCapacitorNativeEnvironment()) {
+      setConnectOverlayState('success')
+      window.setTimeout(() => setConnectOverlayState('hidden'), 850)
+    }
+    setRecentNotice(t('mobile.connectedNotice'))
+  }, [bleUi.connected, t])
+
+  useEffect(() => {
+    if (!bleUi.lastError) return
+    const timer = window.setTimeout(() => {
+      setBleUi((prev) => ({ ...prev, lastError: null }))
+    }, 6000)
+    return () => window.clearTimeout(timer)
+  }, [bleUi.lastError])
 
   const latest = viewState.latest
   const latestProfile = latest?.profile ?? null
@@ -380,6 +422,11 @@ export function AppShell() {
     [latestPersisted?.launcherType, launcherType, launcherLabel],
   )
   const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
+  const latestFallbackTorqueSeries = useMemo(
+    () => (latestProfile ? computeTorque(latestProfile, null, null).torqueSeries : null),
+    [latestProfile],
+  )
+  const latestVisibleTorqueSeries = latestTorqueSeries ?? latestFallbackTorqueSeries
   const latestPeakTimeMs = useMemo(
     () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
     [latestProfile, peakIndex],
@@ -492,31 +539,63 @@ export function AppShell() {
   )
 
   async function handleConnect() {
+    const isNative = isCapacitorNativeEnvironment()
+    const attemptId = Date.now()
+    connectAttemptRef.current = attemptId
     setBleUi((prev) => ({ ...prev, lastError: null, connecting: true }))
+    if (isNative) {
+      setConnectOverlayState('connecting')
+    }
     try {
-      await bleRef.current.connect()
-      setSessionShotCount(0)
-      setRecentNotice(t('mobile.connectedNotice'))
-      if (isMobileLayout) {
-        moveToMobilePage(1)
-        setActiveMobilePage(1)
+      const connectPromise = bleRef.current.connect()
+      if (isNative) {
+        await Promise.race([
+          connectPromise,
+          new Promise((_, reject) =>
+            window.setTimeout(() => reject(new Error('connect timeout')), NATIVE_CONNECT_TIMEOUT_MS),
+          ),
+        ])
+      } else {
+        await connectPromise
       }
+      setSessionShotCount(0)
     } catch (error) {
+      if (connectAttemptRef.current !== attemptId) {
+        return
+      }
+      if (isNative) {
+        bleRef.current.disconnect()
+      }
       setBleUi((prev) => ({
         ...prev,
-        lastError: toLocalizedErrorMessage(t, error instanceof Error ? error.message : String(error)),
+        lastError: `${t('ble.connectFailedSimple')} ${toLocalizedErrorMessage(t, error instanceof Error ? error.message : String(error))}`,
       }))
+      if (isNative) {
+        setConnectOverlayState('error')
+        window.setTimeout(() => setConnectOverlayState('hidden'), 1200)
+      }
     } finally {
-      setBleUi((prev) => ({ ...prev, connecting: false }))
+      if (connectAttemptRef.current === attemptId) {
+        setBleUi((prev) => ({ ...prev, connecting: false }))
+      }
     }
   }
 
+  function handleConnectModalCancel() {
+    connectAttemptRef.current = Date.now()
+    bleRef.current.disconnect()
+    setBleUi((prev) => ({ ...prev, connecting: false }))
+    setConnectOverlayState('hidden')
+  }
+
   function handleDisconnect() {
+    setConnectOverlayState('hidden')
     setBleUi((prev) => ({
       ...prev,
       disconnecting: true,
       isBeyAttached: false,
       bbpTotalShots: null,
+      lastError: null,
     }))
     try {
       bleRef.current.disconnect()
@@ -529,6 +608,7 @@ export function AppShell() {
         disconnecting: false,
         isBeyAttached: false,
         bbpTotalShots: null,
+        lastError: null,
       }))
     }
   }
@@ -669,24 +749,25 @@ export function AppShell() {
               fixedXTicks={[0, 100, 200, 300, 400]}
               fixedYTicks={[0, 3000, 6000, 9000, 12000]}
             />
-          ) : latestTorqueSeries ? (
+          ) : latestVisibleTorqueSeries ? (
             <ProfileChart
               profile={{
-                profilePoints: latestTorqueSeries.tMs.map((tMs, i) => ({
+                profilePoints: latestVisibleTorqueSeries.tMs.map((tMs, i) => ({
                   tMs,
-                  sp: latestTorqueSeries.tau[i] ?? 0,
+                  sp: latestVisibleTorqueSeries.tau[i] ?? 0,
                   nRefs: 0,
-                  dtMs: i > 0 ? tMs - latestTorqueSeries.tMs[i - 1] : tMs,
+                  dtMs: i > 0 ? tMs - latestVisibleTorqueSeries.tMs[i - 1] : tMs,
                 })),
-                tMs: latestTorqueSeries.tMs,
-                sp: latestTorqueSeries.tau,
-                nRefs: latestTorqueSeries.tau.map(() => 0),
+                tMs: latestVisibleTorqueSeries.tMs,
+                sp: latestVisibleTorqueSeries.tau,
+                nRefs: latestVisibleTorqueSeries.tau.map(() => 0),
               }}
-              peakIndex={Math.max(0, latestTorqueSeries.tau.findIndex((x) => x === Math.max(...latestTorqueSeries.tau)))}
+              peakIndex={Math.max(0, latestVisibleTorqueSeries.tau.findIndex((x) => x === Math.max(...latestVisibleTorqueSeries.tau)))}
               timeMode="start"
               yLabel={t('labels.inputTorque')}
               fixedXMaxMs={RECENT_X_MAX_MS}
               fixedXTicks={[0, 100, 200, 300, 400]}
+              drawZeroLine={true}
             />
           ) : (
             <div className="empty">{t('recent.torqueEmpty')}</div>
@@ -797,6 +878,7 @@ export function AppShell() {
             xLabel={t('labels.timeMs')}
             yLabel={bandChartTarget === 'tau' ? t('labels.inputTorque') : t('labels.shotPowerRpm')}
             maxOverlay={20}
+            drawZeroLine={bandChartTarget === 'tau'}
           />
 
           <div className="stats-two-col">
@@ -957,7 +1039,35 @@ export function AppShell() {
             </button>
           ))}
         </div>
+        <div className="mobile-page-hint">{t('mobile.swipeHint')}</div>
         <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
+        {connectOverlayState !== 'hidden' ? (
+          <div className="connect-modal-overlay" role="dialog" aria-modal="true">
+            <div className={`connect-modal-card ${connectOverlayState}`}>
+              <h4>
+                {connectOverlayState === 'connecting'
+                  ? t('ble.connecting')
+                  : connectOverlayState === 'success'
+                    ? t('ble.nativeConnected')
+                    : t('ble.connectFailedSimple')}
+              </h4>
+              <p>
+                {connectOverlayState === 'connecting'
+                  ? t('ble.nativeHoldToConnect')
+                  : connectOverlayState === 'success'
+                    ? t('mobile.connectedNotice')
+                    : t('ble.nativeConnectFailed')}
+              </p>
+              {connectOverlayState === 'connecting' ? (
+                <div className="connect-modal-actions">
+                  <button type="button" className="mini-btn subtle" onClick={handleConnectModalCancel}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </main>
     )
   }
@@ -968,6 +1078,33 @@ export function AppShell() {
       {recentNode}
       {historyNode}
       <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
+      {connectOverlayState !== 'hidden' ? (
+        <div className="connect-modal-overlay" role="dialog" aria-modal="true">
+          <div className={`connect-modal-card ${connectOverlayState}`}>
+            <h4>
+              {connectOverlayState === 'connecting'
+                ? t('ble.connecting')
+                : connectOverlayState === 'success'
+                  ? t('ble.nativeConnected')
+                  : t('ble.connectFailedSimple')}
+            </h4>
+            <p>
+              {connectOverlayState === 'connecting'
+                ? t('ble.nativeHoldToConnect')
+                : connectOverlayState === 'success'
+                  ? t('mobile.connectedNotice')
+                  : t('ble.nativeConnectFailed')}
+            </p>
+            {connectOverlayState === 'connecting' ? (
+              <div className="connect-modal-actions">
+                <button type="button" className="mini-btn subtle" onClick={handleConnectModalCancel}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

@@ -14,6 +14,7 @@ interface ProfileChartProps {
   fixedYMax?: number
   fixedXTicks?: number[]
   fixedYTicks?: number[]
+  drawZeroLine?: boolean
 }
 
 function toDisplayTimeMs(profile: ShotProfile, timeMode: 'start' | 'peak'): number[] {
@@ -29,6 +30,17 @@ function toDisplayTimeMs(profile: ShotProfile, timeMode: 'start' | 'peak'): numb
   return profile.tMs.map((t) => t - t0)
 }
 
+function buildTicks(min: number, max: number, count = 5): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0]
+  if (min === max) return [min]
+  const ticks: number[] = []
+  const step = (max - min) / Math.max(1, count - 1)
+  for (let i = 0; i < count; i += 1) {
+    ticks.push(min + step * i)
+  }
+  return ticks
+}
+
 export function ProfileChart({
   profile,
   peakIndex,
@@ -40,6 +52,7 @@ export function ProfileChart({
   fixedYMax,
   fixedXTicks,
   fixedYTicks,
+  drawZeroLine = false,
 }: ProfileChartProps) {
   const { t } = useTranslation()
   const chart = useMemo(() => {
@@ -99,7 +112,6 @@ export function ProfileChart({
           const innerH = height - padTop - padBottom
           const fixedXAxes = !hasOverlay && fixedXMaxMs !== undefined
           const fixedYAxes = !hasOverlay && fixedYMax !== undefined
-          const fixedAxes = fixedXAxes && fixedYAxes
           const allT = normalizedProfiles.flatMap((p) => p.tMs)
           const allSp = normalizedProfiles.flatMap((p) => p.sp)
           const minT = fixedXAxes ? 0 : Math.min(...allT)
@@ -110,29 +122,38 @@ export function ProfileChart({
           const xAt = (t: number) => padLeft + ((t - minT) / Math.max(1, maxT - minT)) * innerW
           const yAt = (sp: number) => padTop + (1 - (sp - minSp) / Math.max(1, maxSp - minSp)) * innerH
 
-          if (fixedAxes) {
-            ctx.strokeStyle = '#2a3a55'
-            ctx.lineWidth = 1
-            const xTicks = fixedXTicks && fixedXTicks.length > 0
-              ? fixedXTicks
-              : [0, maxT * 0.25, maxT * 0.5, maxT * 0.75, maxT]
-            const yTicks = fixedYTicks && fixedYTicks.length > 0
-              ? fixedYTicks
-              : [0, maxSp * 0.25, maxSp * 0.5, maxSp * 0.75, maxSp]
-            for (const x of xTicks) {
-              const px = xAt(x)
-              ctx.beginPath()
-              ctx.moveTo(px, padTop)
-              ctx.lineTo(px, padTop + innerH)
-              ctx.stroke()
-            }
-            for (const y of yTicks) {
-              const py = yAt(y)
-              ctx.beginPath()
-              ctx.moveTo(padLeft, py)
-              ctx.lineTo(padLeft + innerW, py)
-              ctx.stroke()
-            }
+          const xTicks = fixedXTicks && fixedXTicks.length > 0
+            ? fixedXTicks
+            : buildTicks(minT, maxT, 6)
+          const yTicks = fixedYTicks && fixedYTicks.length > 0
+            ? fixedYTicks
+            : buildTicks(minSp, maxSp, 6)
+
+          ctx.strokeStyle = '#2a3a55'
+          ctx.lineWidth = 1
+          for (const x of xTicks) {
+            const px = xAt(x)
+            ctx.beginPath()
+            ctx.moveTo(px, padTop)
+            ctx.lineTo(px, padTop + innerH)
+            ctx.stroke()
+          }
+          for (const y of yTicks) {
+            const py = yAt(y)
+            ctx.beginPath()
+            ctx.moveTo(padLeft, py)
+            ctx.lineTo(padLeft + innerW, py)
+            ctx.stroke()
+          }
+
+          if (drawZeroLine && minSp < 0 && maxSp > 0) {
+            const y0 = yAt(0)
+            ctx.strokeStyle = 'rgba(255, 165, 180, 0.65)'
+            ctx.lineWidth = 1.2
+            ctx.beginPath()
+            ctx.moveTo(padLeft, y0)
+            ctx.lineTo(padLeft + innerW, y0)
+            ctx.stroke()
           }
 
           ctx.strokeStyle = '#3f5775'
@@ -188,24 +209,17 @@ export function ProfileChart({
             canvas.title = `t=${tVal} ms, ${yLabel}=${yVal}`
           }
 
-          if (fixedAxes) {
-            ctx.fillStyle = '#9cb4cc'
-            ctx.font = '10px sans-serif'
-            const xTicks = fixedXTicks && fixedXTicks.length > 0
-              ? fixedXTicks
-              : [0, maxT * 0.25, maxT * 0.5, maxT * 0.75, maxT]
-            const yTicks = fixedYTicks && fixedYTicks.length > 0
-              ? fixedYTicks
-              : [0, maxSp * 0.25, maxSp * 0.5, maxSp * 0.75, maxSp]
-            xTicks.forEach((tick) => {
-              const x = xAt(tick)
-              ctx.fillText(String(Math.round(tick)), x - 8, padTop + innerH + 16)
-            })
-            yTicks.forEach((tick) => {
-              const y = yAt(tick)
-              ctx.fillText(String(Math.round(tick)), 14, y + 3)
-            })
-          }
+          ctx.fillStyle = '#9cb4cc'
+          ctx.font = '10px sans-serif'
+          xTicks.forEach((tick) => {
+            const x = xAt(tick)
+            ctx.fillText(String(Math.round(tick)), x - 8, padTop + innerH + 16)
+          })
+          yTicks.forEach((tick) => {
+            const y = yAt(tick)
+            const value = Math.abs(tick) < 1 ? tick.toFixed(2) : tick.toFixed(1)
+            ctx.fillText(value, 8, y + 3)
+          })
 
           ctx.fillStyle = '#cfe4ff'
           ctx.font = '11px sans-serif'

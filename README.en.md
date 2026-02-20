@@ -29,6 +29,10 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
   - Center: Shot Analysis
   - Right: History & Analysis
 - Bottom `○●○` indicator can also be tapped to move between pages
+- During connection, a guide modal is shown:
+  - Success: “Connected”
+  - Failure/timeout: error message shown
+  - You can stop the attempt with `Cancel`
 
 ### Shot Analysis
 - Recorded Shot Power
@@ -69,7 +73,7 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
 - Band statistics can compare launcher counts
 
 ## Debug Page
-- `/rawlog` is the raw packet log page
+- `/RawLog` is the raw packet log page
 - It is not linked from normal UI (direct URL only)
 
 ## Development
@@ -132,7 +136,7 @@ pnpm build:pages
 
 Notes:
 - Assumes `VITE_BASE_PATH=/BeyMeter/`
-- `/rawlog` is also reachable via 404 rewrite routing
+- `/RawLog` is also reachable via 404 rewrite routing
 
 ## iOS Device Run
 ```bash

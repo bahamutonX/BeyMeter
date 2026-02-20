@@ -22,6 +22,7 @@ interface BandChartProps {
   xLabel?: string
   yLabel?: string
   maxOverlay?: number
+  drawZeroLine?: boolean
 }
 
 function drawAxes(
@@ -49,6 +50,17 @@ function safeRange(values: number[], fallback = [0, 1]): [number, number] {
   const max = Math.max(...valid)
   if (min === max) return [min - 1, max + 1]
   return [min, max]
+}
+
+function buildTicks(min: number, max: number, count = 6): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0]
+  if (min === max) return [min]
+  const ticks: number[] = []
+  const step = (max - min) / Math.max(1, count - 1)
+  for (let i = 0; i < count; i += 1) {
+    ticks.push(min + step * i)
+  }
+  return ticks
 }
 
 function prepSeries(
@@ -102,6 +114,7 @@ export function BandChart({
   xLabel = 'Time (ms)',
   yLabel = 'Value',
   maxOverlay = 20,
+  drawZeroLine = false,
 }: BandChartProps) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -181,9 +194,9 @@ export function BandChart({
     }
 
     const xAt = (t: number) => padLeft + ((t - rangeStart) / Math.max(1, rangeEnd - rangeStart)) * (width - padLeft - padRight)
-    const drawGridAndTicks = (yAt: (v: number) => number) => {
+    const drawGridAndTicks = (yAt: (v: number) => number, minY: number, maxY: number) => {
       const xTicks = fixedXTicks ?? [rangeStart, (rangeStart + rangeEnd) * 0.5, rangeEnd]
-      const yTicks = fixedYTicks ?? []
+      const yTicks = fixedYTicks ?? buildTicks(minY, maxY, 6)
       ctx.strokeStyle = '#2a3a55'
       ctx.lineWidth = 1
       for (const x of xTicks) {
@@ -200,13 +213,23 @@ export function BandChart({
         ctx.lineTo(width - padRight, py)
         ctx.stroke()
       }
+      if (drawZeroLine && minY < 0 && maxY > 0) {
+        const y0 = yAt(0)
+        ctx.strokeStyle = 'rgba(255, 165, 180, 0.65)'
+        ctx.lineWidth = 1.2
+        ctx.beginPath()
+        ctx.moveTo(padLeft, y0)
+        ctx.lineTo(width - padRight, y0)
+        ctx.stroke()
+      }
       ctx.fillStyle = '#9cb4cc'
       ctx.font = '10px sans-serif'
       for (const x of xTicks) {
         ctx.fillText(String(Math.round(x)), xAt(x) - 8, height - padBottom + 16)
       }
       for (const y of yTicks) {
-        ctx.fillText(String(Math.round(y)), 14, yAt(y) + 3)
+        const value = Math.abs(y) < 1 ? y.toFixed(2) : y.toFixed(1)
+        ctx.fillText(value, 8, yAt(y) + 3)
       }
       ctx.fillStyle = '#cfe4ff'
       ctx.font = '11px sans-serif'
@@ -225,9 +248,7 @@ export function BandChart({
       const minY = fixedYMin ?? autoMinY
       const maxY = fixedYMax ?? autoMaxY
       const yAt = (v: number) => padTop + (1 - (v - minY) / Math.max(1e-9, maxY - minY)) * (height - padTop - padBottom)
-      if (fixedYMin !== undefined && fixedYMax !== undefined) {
-        drawGridAndTicks(yAt)
-      }
+      drawGridAndTicks(yAt, minY, maxY)
       sampled.forEach((s, idx) => {
         ctx.strokeStyle = `rgba(88,224,255,${Math.max(0.08, 0.32 - idx * 0.01)})`
         ctx.lineWidth = 1
@@ -248,9 +269,7 @@ export function BandChart({
     const minY = fixedYMin ?? autoMinY
     const maxY = fixedYMax ?? autoMaxY
     const yAt = (v: number) => padTop + (1 - (v - minY) / Math.max(1e-9, maxY - minY)) * (height - padTop - padBottom)
-    if (fixedYMin !== undefined && fixedYMax !== undefined) {
-      drawGridAndTicks(yAt)
-    }
+    drawGridAndTicks(yAt, minY, maxY)
 
     ctx.strokeStyle = 'rgba(88,224,255,0.25)'
     ctx.lineWidth = 1
@@ -307,6 +326,7 @@ export function BandChart({
     seriesTarget,
     shots,
     t,
+    drawZeroLine,
     xLabel,
     yLabel,
   ])

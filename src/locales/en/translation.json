@@ -7,6 +7,7 @@
     "disconnect": "Disconnect",
     "connecting": "Connecting...",
     "disconnecting": "Disconnecting...",
+    "cancel": "Cancel",
     "none": "--",
     "metricInfoAria": "{{label}} description",
     "mean": "Mean",
@@ -27,6 +28,11 @@
     "attachUnknown": "Bey status: unknown",
     "commError": "Communication error",
     "holdToPair": "Press and hold the Beybattle Pass button",
+    "nativeHoldToConnect": "Press and hold the Beybattle Pass button to connect.",
+    "nativeConnected": "Connected!",
+    "nativeConnectFailed": "Connection failed. Please try again.",
+    "connectTimeout": "Connection timed out. Tap connect first, then press and hold the Beybattle Pass button.",
+    "connectFailedSimple": "Connection failed.",
     "deviceNotFound": "Beybattle Pass not found. Tap connect first, then press and hold the Beybattle Pass button.",
     "connectFailed": "Connection failed. Tap connect first, then press and hold the Beybattle Pass button.",
     "initFailed": "Bluetooth initialization failed. Restart the app and reconnect.",
@@ -53,7 +59,8 @@
     "settingsDesc": "Launcher selection and Beybattle Pass connection",
     "connectedNotice": "Connected",
     "guideAfterConnect": "Attach the bey and shoot. You can continue shooting.",
-    "pageMove": "Go to page {{page}}"
+    "pageMove": "Go to page {{page}}",
+    "swipeHint": "Swipe left/right, or tap the dots below to move pages"
   },
   "recent": {
     "en": "RECENT",
