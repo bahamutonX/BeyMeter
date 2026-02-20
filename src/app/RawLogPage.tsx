@@ -21,6 +21,17 @@ interface RawLogState {
   packets: BbpPacket[]
 }
 
+interface RawShotBundleView {
+  id: number
+  tStart: number
+  tEnd: number
+  packets: Array<{
+    packet: BbpPacket
+    decoded: string[]
+  }>
+  isCompleteShot: boolean
+}
+
 function formatTimestamp(ts: number): string {
   const d = new Date(ts)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -214,11 +225,43 @@ export function RawLogPage() {
     setState((prev) => ({ ...prev, packets: [] }))
   }
 
-  const decodedRows = useMemo(() => {
-    return state.packets.map((p, idx) => ({
-      packet: p,
-      decoded: decodePacket(p, buildContextMap(state.packets, idx), t),
-    }))
+  const shotBundles = useMemo(() => {
+    if (state.packets.length === 0) return []
+    const chronological = [...state.packets].reverse()
+    const bundles: RawShotBundleView[] = []
+    let current: RawShotBundleView | null = null
+    let nextId = 1
+
+    for (let i = 0; i < chronological.length; i += 1) {
+      const p = chronological[i]
+      const decoded = decodePacket(p, buildContextMap(chronological, i), t)
+
+      if (!current) {
+        current = {
+          id: nextId,
+          tStart: p.timestamp,
+          tEnd: p.timestamp,
+          packets: [],
+          isCompleteShot: false,
+        }
+      }
+
+      current.packets.push({ packet: p, decoded })
+      current.tEnd = p.timestamp
+
+      if (p.header === HEADER_PROF_LAST) {
+        current.isCompleteShot = true
+        bundles.push(current)
+        nextId += 1
+        current = null
+      }
+    }
+
+    if (current && current.packets.length > 0) {
+      bundles.push(current)
+    }
+
+    return bundles.reverse()
   }, [state.packets, t])
 
   return (
@@ -255,20 +298,30 @@ export function RawLogPage() {
       <NeonPanel className="rawlog-list-wrap">
         <h2>{t('rawlog.receivedAll')}</h2>
         <div className="rawlog-list">
-          {decodedRows.map(({ packet: p, decoded }, idx) => (
-            <div className="rawlog-row" key={`${p.timestamp}-${idx}`}>
-              <div className="rawlog-meta">
-                <span>{formatTimestamp(p.timestamp)}</span>
-                <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
-                <span>{`len=${p.length}`}</span>
-              </div>
-              <code>{p.hex}</code>
-              <div className="rawlog-decoded">
-                {decoded.map((line, i) => (
-                  <div key={`${p.timestamp}-${idx}-${i}`}>{line}</div>
-                ))}
-              </div>
-            </div>
+          {shotBundles.map((bundle) => (
+            <details className="rawlog-bundle" key={`bundle-${bundle.id}`} open={bundle.id === shotBundles[0]?.id}>
+              <summary className="rawlog-bundle-summary">
+                <span>{`${t('rawlog.bundle')} #${bundle.id}`}</span>
+                <span>{`${formatTimestamp(bundle.tStart)} - ${formatTimestamp(bundle.tEnd)}`}</span>
+                <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
+                <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
+              </summary>
+              {bundle.packets.map(({ packet: p, decoded }, idx) => (
+                <div className="rawlog-row" key={`${bundle.id}-${p.timestamp}-${idx}`}>
+                  <div className="rawlog-meta">
+                    <span>{formatTimestamp(p.timestamp)}</span>
+                    <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
+                    <span>{`len=${p.length}`}</span>
+                  </div>
+                  <code>{p.hex}</code>
+                  <div className="rawlog-decoded">
+                    {decoded.map((line, i) => (
+                      <div key={`${bundle.id}-${p.timestamp}-${idx}-${i}`}>{line}</div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </details>
           ))}
         </div>
       </NeonPanel>

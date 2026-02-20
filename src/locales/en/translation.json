@@ -71,8 +71,8 @@
     "shotPowerUpdated": "Shot power updated!",
     "suspect": "Possible anomaly",
     "spSeries": "Shot Power",
-    "torqueSeries": "Input rate (rpm/ms)",
-    "torqueEmpty": "Input rate (rpm/ms): --",
+    "torqueSeries": "Input Torque (Relative)",
+    "torqueEmpty": "Input Torque (Relative): --",
     "statusPrefix": "Beybattle Pass",
     "beyPrefix": "Bey"
   },
@@ -88,7 +88,7 @@
     "waveformBand": "Waveform: band {{bandId}}",
     "peakAvg": "Peak (avg)",
     "maxShotPowerAvg": "Max Shot Power (avg)",
-    "maxTorqueAvg": "Max Input Rate (avg)",
+    "maxTorqueAvg": "Max Input Torque (avg)",
     "modeAvg": "Average",
     "modeOverlay": "Overlay",
     "statsTitle": "Band Shot Power Stats",
@@ -102,7 +102,7 @@
   "labels": {
     "timeMs": "Time (ms)",
     "shotPowerRpm": "Shot Power (rpm)",
-    "inputTorque": "Input rate (rpm/ms)",
+    "inputTorque": "Input Torque (Relative)",
     "rpm": "rpm",
     "shots": "shots"
   },
@@ -115,6 +115,9 @@
     "back": "Back to Meter",
     "connected": "Connected",
     "attached": "Bey attached",
+    "bundle": "Shot Bundle",
+    "complete": "Complete",
+    "partial": "Receiving",
     "packetCount": "Packets",
     "receivedAll": "Received Logs (all)",
     "on": "ON",
@@ -148,9 +151,9 @@
   },
   "metrics": {
     "maxTau": {
-      "label": "Max Input Rate",
-      "line1": "Meaning: Maximum rise rate of RPM (rpm/ms)",
-      "line2": "High: sharper initial acceleration / Low: gentler rise",
+      "label": "Max Input Torque (Relative)",
+      "line1": "Meaning: Peak estimated input torque during a shot (relative scale)",
+      "line2": "High: stronger initial input trend / Low: weaker initial input trend",
       "line3": "Note: judge trends across multiple shots"
     },
     "t_peak": {

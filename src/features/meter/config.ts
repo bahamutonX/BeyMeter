@@ -1,6 +1,1 @@
 export const PROFILE_HISTORY_LIMIT = 50
-export const SUSPECT_MIN_PROFILE_POINTS = 7
-export const SUSPECT_MAX_TO_YOUR_RATIO = 1.6
-export const SCORE_TIME_TRIM_MS = 80
-export const SCORE_NREFS_MIN = 1000
-export const RAW_PEAK_NOISE_THRESHOLD = 5000

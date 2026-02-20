@@ -307,7 +307,7 @@ export function AppShell() {
             frictionFit,
             torqueSeries,
             torqueFeatures,
-            label: snapshot.estSp >= 10000 ? 'HIGH' : snapshot.estSp >= 3000 ? 'MID' : 'LOW',
+            label: snapshot.yourSp >= 10000 ? 'HIGH' : snapshot.yourSp >= 3000 ? 'MID' : 'LOW',
           }
           await saveShot(shot)
           const loaded = (await listShots()).map((s) => ({
@@ -818,7 +818,7 @@ export function AppShell() {
                   <h5>{t('history.shotFactors')}</h5>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.maxTau} />
-                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau} rpm/ms` : '—'}</strong>
+                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau}` : '—'}</strong>
                   </div>
                   <div className="compact-metric">
                     <MetricLabel help={METRIC_LABELS.t_50} />

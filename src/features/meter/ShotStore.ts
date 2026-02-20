@@ -1,20 +1,5 @@
 import type { ProtocolError, ShotSnapshot } from '../ble/bbpTypes'
-import {
-  buildHistogram,
-  computeStats,
-  type HistogramBin,
-  type MeterStats,
-  type SpMetric,
-} from './stats'
 import { PROFILE_HISTORY_LIMIT } from './config'
-import {
-  computeScoreCandidates,
-  type CandidateSettings,
-  type ScoreCandidates,
-  exploreThresholds,
-  type ThresholdExploreResult,
-} from './scoreCandidates'
-import { SCORE_NREFS_MIN, SCORE_TIME_TRIM_MS } from './config'
 
 const MAX_HISTORY = 200
 const MAX_RAW_PACKETS = 200
@@ -34,9 +19,6 @@ export interface ShotBundle {
   packets: Record<string, string>
   yourSp?: number
   profile?: ShotSnapshot['profile']
-  candidates?: ScoreCandidates
-  chosenSettings?: CandidateSettings
-  thresholdExplore?: ThresholdExploreResult
 }
 
 export interface MeterViewState {
@@ -44,8 +26,6 @@ export interface MeterViewState {
   history: ShotSnapshot[]
   rawPackets: RawPacketLog[]
   shotBundles: ShotBundle[]
-  statsByMetric: Record<SpMetric, MeterStats>
-  histogramByMetric: Record<SpMetric, HistogramBin[]>
   error: ProtocolError | null
 }
 
@@ -95,17 +75,6 @@ export class ShotStore {
       return this.getState()
     }
 
-    const chosenSettings: CandidateSettings = {
-      timeTrimMs: SCORE_TIME_TRIM_MS,
-      nRefsMin: SCORE_NREFS_MIN,
-    }
-    const candidates = snapshot
-      ? computeScoreCandidates(snapshot.profile, chosenSettings)
-      : undefined
-    const thresholdExplore = snapshot
-      ? exploreThresholds(snapshot.profile, snapshot.yourSp)
-      : undefined
-
     const bundle: ShotBundle = {
       id: this.nextBundleId,
       tStart: this.pendingBundle.tStart,
@@ -113,9 +82,6 @@ export class ShotStore {
       packets: this.pendingBundle.packets,
       yourSp: snapshot?.yourSp,
       profile: snapshot?.profile ?? undefined,
-      candidates,
-      chosenSettings: snapshot ? chosenSettings : undefined,
-      thresholdExplore,
     }
     this.nextBundleId += 1
     this.shotBundles = [bundle, ...this.shotBundles].slice(0, MAX_BUNDLES)
@@ -150,24 +116,11 @@ export class ShotStore {
   }
 
   getState(): MeterViewState {
-    const statsByMetric = {
-      your: computeStats(this.history, 'your'),
-      est: computeStats(this.history, 'est'),
-      max: computeStats(this.history, 'max'),
-    }
-    const histogramByMetric = {
-      your: buildHistogram(this.history, 'your'),
-      est: buildHistogram(this.history, 'est'),
-      max: buildHistogram(this.history, 'max'),
-    }
-
     return {
       latest: this.latest,
       history: this.history,
       rawPackets: this.rawPackets,
       shotBundles: this.shotBundles,
-      statsByMetric,
-      histogramByMetric,
       error: this.error,
     }
   }

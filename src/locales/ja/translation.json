@@ -71,8 +71,8 @@
     "shotPowerUpdated": "シュートパワー更新！",
     "suspect": "異常値の可能性",
     "spSeries": "シュートパワー",
-    "torqueSeries": "入力変化率 (rpm/ms)",
-    "torqueEmpty": "入力変化率 (rpm/ms): --",
+    "torqueSeries": "入力トルク（相対値）",
+    "torqueEmpty": "入力トルク（相対値）: --",
     "statusPrefix": "ベイバトルパス",
     "beyPrefix": "ベイ"
   },
@@ -88,7 +88,7 @@
     "waveformBand": "シュート波形：帯域{{bandId}}",
     "peakAvg": "ピーク(平均)",
     "maxShotPowerAvg": "最大シュートパワー(平均)",
-    "maxTorqueAvg": "最大入力変化率(平均)",
+    "maxTorqueAvg": "最大入力トルク(平均)",
     "modeAvg": "平均",
     "modeOverlay": "重ね描き",
     "statsTitle": "帯域のシュートパワー統計",
@@ -102,7 +102,7 @@
   "labels": {
     "timeMs": "時間 (ms)",
     "shotPowerRpm": "シュートパワー (rpm)",
-    "inputTorque": "入力変化率 (rpm/ms)",
+    "inputTorque": "入力トルク（相対値）",
     "rpm": "rpm",
     "shots": "本"
   },
@@ -115,6 +115,9 @@
     "back": "メーターへ戻る",
     "connected": "接続",
     "attached": "ベイ装着",
+    "bundle": "シュート束",
+    "complete": "確定",
+    "partial": "受信中",
     "packetCount": "パケット数",
     "receivedAll": "受信ログ（全件）",
     "on": "ON",
@@ -148,9 +151,9 @@
   },
   "metrics": {
     "maxTau": {
-      "label": "最大入力変化率",
-      "line1": "意味: 回転数の増加率（rpm/ms）の最大値",
-      "line2": "大: 立ち上がり入力が鋭い / 小: 立ち上がりが穏やか",
+      "label": "最大入力トルク（相対値）",
+      "line1": "意味: シュート中の入力トルク推定の最大値（比較用の相対値）",
+      "line2": "大: 初動入力が強い傾向 / 小: 初動入力が弱い傾向",
       "line3": "注意: 単発で断定せず、複数回の傾向で判断"
     },
     "t_peak": {

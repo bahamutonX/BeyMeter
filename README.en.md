@@ -41,7 +41,7 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
 
 ### Latest Shot Waveform
 - X-axis: Time (ms)
-- Toggle between `Shot Power` and `Input rate (rpm/ms)`
+- Toggle between `Shot Power` and `Input Torque (Relative)`
 - Peak time and max shot power are shown at the top-right
 
 ### History & Analysis
@@ -51,7 +51,7 @@ BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot wavef
   - Launcher breakdown (3 types)
   - Mean / Max / Standard deviation
 - Detail metrics (mean / p50):
-  - Max input rate
+  - Max Input Torque (Relative)
   - t_50
   - t_peak
   - slope_max
