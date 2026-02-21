@@ -1,4 +1,4 @@
-import { buildTimeGrid, resampleLinear } from './resample'
+import { buildTimeGrid, resampleStep } from './resample'
 
 export interface AggregateSeries {
   newTime: number[]
@@ -28,7 +28,7 @@ export function aggregateSeries(
   step = 10,
 ): AggregateSeries {
   const newTime = buildTimeGrid(start, end, step)
-  const matrix = series.map((s) => resampleLinear(s.t, s.y, newTime))
+  const matrix = series.map((s) => resampleStep(s.t, s.y, newTime))
 
   const mean: number[] = []
   const median: number[] = []

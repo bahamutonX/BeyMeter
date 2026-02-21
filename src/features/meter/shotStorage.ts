@@ -21,6 +21,7 @@ export interface PersistentShot {
   estSp: number
   maxSp: number
   chosenSpType: ChosenSpType
+  launchMarkerMs?: number | null
   profile: ShotProfile
   features: ShotFeatures
   decaySegment?: DecaySegment | null

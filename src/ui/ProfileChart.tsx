@@ -6,15 +6,16 @@ import type { ShotProfile } from '../features/ble/bbpTypes'
 interface ProfileChartProps {
   profile: ShotProfile | null
   peakIndex: number
-  overlays?: (ShotProfile | null)[]
-  mode?: 'raw' | 'normalized'
+  secondaryProfile?: ShotProfile | null
+  secondaryPeakIndex?: number
+  launchMarkerMs?: number | null
   timeMode?: 'start' | 'peak'
-  yLabel?: string
+  primaryYLabel?: string
+  secondaryYLabel?: string
   fixedXMaxMs?: number
-  fixedYMax?: number
+  fixedPrimaryYMax?: number
   fixedXTicks?: number[]
-  fixedYTicks?: number[]
-  drawZeroLine?: boolean
+  fixedPrimaryYTicks?: number[]
 }
 
 function toDisplayTimeMs(profile: ShotProfile, timeMode: 'start' | 'peak'): number[] {
@@ -30,7 +31,7 @@ function toDisplayTimeMs(profile: ShotProfile, timeMode: 'start' | 'peak'): numb
   return profile.tMs.map((t) => t - t0)
 }
 
-function buildTicks(min: number, max: number, count = 5): number[] {
+function buildTicks(min: number, max: number, count = 6): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [0]
   if (min === max) return [min]
   const ticks: number[] = []
@@ -41,40 +42,88 @@ function buildTicks(min: number, max: number, count = 5): number[] {
   return ticks
 }
 
+function safeRange(values: number[]): [number, number] {
+  const valid = values.filter((v) => Number.isFinite(v))
+  if (valid.length === 0) return [0, 1]
+  let min = Math.min(...valid)
+  let max = Math.max(...valid)
+  if (min > 0) min = 0
+  if (min === max) {
+    max += 1
+  }
+  return [min, max]
+}
+
+function drawStepSeries(
+  ctx: CanvasRenderingContext2D,
+  tMs: number[],
+  y: number[],
+  xAt: (t: number) => number,
+  yAt: (v: number) => number,
+  rangeStart: number,
+  rangeEnd: number,
+) {
+  if (tMs.length === 0 || y.length === 0) return
+  let started = false
+  let prevX = 0
+  let prevY = 0
+
+  for (let i = 0; i < Math.min(tMs.length, y.length); i += 1) {
+    const tx = tMs[i]
+    const vy = y[i]
+    if (!Number.isFinite(tx) || !Number.isFinite(vy)) continue
+    if (tx < rangeStart) continue
+    if (tx > rangeEnd) break
+    const x = xAt(tx)
+    const py = yAt(vy)
+    if (!started) {
+      ctx.moveTo(x, py)
+      started = true
+    } else {
+      ctx.lineTo(x, prevY)
+      ctx.lineTo(x, py)
+    }
+    prevX = x
+    prevY = py
+  }
+
+  if (started) {
+    ctx.lineTo(prevX, prevY)
+  }
+}
+
 export function ProfileChart({
   profile,
   peakIndex,
-  overlays = [],
-  mode = 'raw',
+  secondaryProfile = null,
+  secondaryPeakIndex = 0,
+  launchMarkerMs = null,
   timeMode = 'start',
-  yLabel = 'SP',
+  primaryYLabel = 'SP',
+  secondaryYLabel = 'Input',
   fixedXMaxMs,
-  fixedYMax,
+  fixedPrimaryYMax,
   fixedXTicks,
-  fixedYTicks,
-  drawZeroLine = false,
+  fixedPrimaryYTicks,
 }: ProfileChartProps) {
   const { t } = useTranslation()
   const chart = useMemo(() => {
-    const baseProfiles = overlays.filter((x): x is ShotProfile => Boolean(x && x.sp.length >= 2))
-    const hasOverlay = baseProfiles.length > 0
-    const chartProfiles = hasOverlay
-      ? baseProfiles
-      : profile && profile.sp.length >= 2
-        ? [profile]
-        : []
+    if (!profile || profile.sp.length < 2) return null
 
-    if (chartProfiles.length === 0) return null
+    const primary = {
+      tMs: toDisplayTimeMs(profile, timeMode),
+      y: profile.sp,
+    }
 
-    const normalizedProfiles = chartProfiles.map((p) => {
-      const displayT = toDisplayTimeMs(p, timeMode)
-      const peak = Math.max(...p.sp)
-      const sp = mode === 'normalized' ? p.sp.map((v) => v / Math.max(1, peak)) : p.sp
-      return { tMs: displayT, sp }
-    })
+    const secondary = secondaryProfile && secondaryProfile.sp.length >= 2
+      ? {
+          tMs: toDisplayTimeMs(secondaryProfile, timeMode),
+          y: secondaryProfile.sp,
+        }
+      : null
 
-    return { hasOverlay, normalizedProfiles }
-  }, [mode, overlays, profile, timeMode])
+    return { primary, secondary }
+  }, [profile, secondaryProfile, timeMode])
 
   return (
     <div className="chart-wrap">
@@ -102,32 +151,36 @@ export function ProfileChart({
             return
           }
 
-          const { hasOverlay, normalizedProfiles } = chart
-
-          const padLeft = 54
-          const padRight = 20
+          const padLeft = 62
+          const padRight = 56
           const padTop = 16
           const padBottom = 38
           const innerW = width - padLeft - padRight
           const innerH = height - padTop - padBottom
-          const fixedXAxes = !hasOverlay && fixedXMaxMs !== undefined
-          const fixedYAxes = !hasOverlay && fixedYMax !== undefined
-          const allT = normalizedProfiles.flatMap((p) => p.tMs)
-          const allSp = normalizedProfiles.flatMap((p) => p.sp)
-          const minT = fixedXAxes ? 0 : Math.min(...allT)
-          const maxT = fixedXAxes ? (fixedXMaxMs as number) : Math.max(...allT)
-          const minSp = fixedYAxes ? 0 : Math.min(...allSp)
-          const maxSp = fixedYAxes ? (fixedYMax as number) : Math.max(...allSp)
 
-          const xAt = (t: number) => padLeft + ((t - minT) / Math.max(1, maxT - minT)) * innerW
-          const yAt = (sp: number) => padTop + (1 - (sp - minSp) / Math.max(1, maxSp - minSp)) * innerH
+          const allT = [
+            ...chart.primary.tMs,
+            ...(chart.secondary?.tMs ?? []),
+          ]
+          const minT = 0
+          const maxT = fixedXMaxMs ?? Math.max(...allT)
+
+          const minPrimaryY = 0
+          const maxPrimaryY = fixedPrimaryYMax ?? Math.max(...chart.primary.y)
+
+          const [minSecondaryY, maxSecondaryY] = safeRange(chart.secondary?.y ?? [])
+
+          const xAt = (tVal: number) => padLeft + ((tVal - minT) / Math.max(1, maxT - minT)) * innerW
+          const yPrimaryAt = (v: number) => padTop + (1 - (v - minPrimaryY) / Math.max(1, maxPrimaryY - minPrimaryY)) * innerH
+          const ySecondaryAt = (v: number) => padTop + (1 - (v - minSecondaryY) / Math.max(1e-9, maxSecondaryY - minSecondaryY)) * innerH
 
           const xTicks = fixedXTicks && fixedXTicks.length > 0
             ? fixedXTicks
             : buildTicks(minT, maxT, 6)
-          const yTicks = fixedYTicks && fixedYTicks.length > 0
-            ? fixedYTicks
-            : buildTicks(minSp, maxSp, 6)
+          const primaryYTicks = fixedPrimaryYTicks && fixedPrimaryYTicks.length > 0
+            ? fixedPrimaryYTicks
+            : buildTicks(minPrimaryY, maxPrimaryY, 6)
+          const secondaryYTicks = buildTicks(minSecondaryY, maxSecondaryY, 6)
 
           ctx.strokeStyle = '#2a3a55'
           ctx.lineWidth = 1
@@ -138,18 +191,18 @@ export function ProfileChart({
             ctx.lineTo(px, padTop + innerH)
             ctx.stroke()
           }
-          for (const y of yTicks) {
-            const py = yAt(y)
+          for (const y of primaryYTicks) {
+            const py = yPrimaryAt(y)
             ctx.beginPath()
             ctx.moveTo(padLeft, py)
             ctx.lineTo(padLeft + innerW, py)
             ctx.stroke()
           }
 
-          if (drawZeroLine && minSp < 0 && maxSp > 0) {
-            const y0 = yAt(0)
+          if (minSecondaryY < 0 && maxSecondaryY > 0) {
+            const y0 = ySecondaryAt(0)
             ctx.strokeStyle = 'rgba(255, 165, 180, 0.65)'
-            ctx.lineWidth = 1.2
+            ctx.lineWidth = 1
             ctx.beginPath()
             ctx.moveTo(padLeft, y0)
             ctx.lineTo(padLeft + innerW, y0)
@@ -164,49 +217,74 @@ export function ProfileChart({
           ctx.lineTo(padLeft + innerW, padTop + innerH)
           ctx.stroke()
 
-          normalizedProfiles.forEach((p, idx) => {
-            ctx.strokeStyle = hasOverlay
-              ? `rgba(88, 224, 255, ${Math.max(0.08, 0.35 - idx * 0.003)})`
-              : '#58e0ff'
-            ctx.lineWidth = hasOverlay ? 1 : 2
-            ctx.beginPath()
-            const t0 = fixedXAxes ? Math.max(0, Math.min(maxT, p.tMs[0])) : p.tMs[0]
-            const s0 = fixedYAxes ? Math.max(0, Math.min(maxSp, p.sp[0])) : p.sp[0]
-            ctx.moveTo(xAt(t0), yAt(s0))
-            const step = p.sp.length > 96 ? 2 : 1
-            for (let i = step; i < p.sp.length; i += step) {
-              const tx = fixedXAxes ? Math.max(0, Math.min(maxT, p.tMs[i])) : p.tMs[i]
-              const sy = fixedYAxes ? Math.max(0, Math.min(maxSp, p.sp[i])) : p.sp[i]
-              if (fixedXAxes && p.tMs[i] > maxT) {
-                break
-              }
-              if (fixedXAxes && p.tMs[i] < 0) {
-                continue
-              }
-              ctx.lineTo(xAt(tx), yAt(sy))
-            }
-            ctx.stroke()
-          })
+          ctx.beginPath()
+          ctx.moveTo(padLeft + innerW, padTop)
+          ctx.lineTo(padLeft + innerW, padTop + innerH)
+          ctx.stroke()
 
-          if (!hasOverlay && normalizedProfiles.length > 0) {
-            const p = normalizedProfiles[0]
-            const safePeakIndex = Math.min(Math.max(peakIndex, 0), p.sp.length - 1)
-            const px = xAt(p.tMs[safePeakIndex])
-            const py = yAt(p.sp[safePeakIndex])
-            ctx.strokeStyle = '#d9483b88'
+          ctx.strokeStyle = '#58e0ff'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          const clampedPrimaryY = chart.primary.y.map((v) => Math.max(minPrimaryY, Math.min(maxPrimaryY, v)))
+          drawStepSeries(ctx, chart.primary.tMs, clampedPrimaryY, xAt, yPrimaryAt, 0, maxT)
+          ctx.stroke()
+
+          if (chart.secondary) {
+            ctx.strokeStyle = '#ff83d1'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            drawStepSeries(ctx, chart.secondary.tMs, chart.secondary.y, xAt, ySecondaryAt, 0, maxT)
+            ctx.stroke()
+          }
+
+          const safePrimaryPeakIndex = Math.min(Math.max(peakIndex, 0), chart.primary.y.length - 1)
+          const primaryPeakX = xAt(chart.primary.tMs[safePrimaryPeakIndex] ?? 0)
+          const primaryPeakY = yPrimaryAt(chart.primary.y[safePrimaryPeakIndex] ?? 0)
+
+          ctx.strokeStyle = 'rgba(88, 224, 255, 0.65)'
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.moveTo(primaryPeakX, padTop)
+          ctx.lineTo(primaryPeakX, padTop + innerH)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(padLeft, primaryPeakY)
+          ctx.lineTo(padLeft + innerW, primaryPeakY)
+          ctx.stroke()
+          ctx.fillStyle = '#58e0ff'
+          ctx.beginPath()
+          ctx.arc(primaryPeakX, primaryPeakY, 4, 0, Math.PI * 2)
+          ctx.fill()
+
+          if (chart.secondary && chart.secondary.y.length > 0) {
+            const safeSecondaryPeakIndex = Math.min(Math.max(secondaryPeakIndex, 0), chart.secondary.y.length - 1)
+            const secondaryPeakX = xAt(chart.secondary.tMs[safeSecondaryPeakIndex] ?? 0)
+            const secondaryPeakY = ySecondaryAt(chart.secondary.y[safeSecondaryPeakIndex] ?? 0)
+
+            ctx.strokeStyle = 'rgba(255, 131, 209, 0.65)'
             ctx.lineWidth = 1
             ctx.beginPath()
-            ctx.moveTo(px, padTop)
-            ctx.lineTo(px, padTop + innerH)
+            ctx.moveTo(secondaryPeakX, padTop)
+            ctx.lineTo(secondaryPeakX, padTop + innerH)
             ctx.stroke()
-            ctx.fillStyle = '#d9483b'
             ctx.beginPath()
-            ctx.arc(px, py, 4, 0, Math.PI * 2)
+            ctx.moveTo(padLeft, secondaryPeakY)
+            ctx.lineTo(padLeft + innerW, secondaryPeakY)
+            ctx.stroke()
+            ctx.fillStyle = '#ff83d1'
+            ctx.beginPath()
+            ctx.arc(secondaryPeakX, secondaryPeakY, 4, 0, Math.PI * 2)
             ctx.fill()
+          }
 
-            const tVal = Math.round(p.tMs[safePeakIndex] ?? 0)
-            const yVal = Number((p.sp[safePeakIndex] ?? 0).toFixed(3))
-            canvas.title = `t=${tVal} ms, ${yLabel}=${yVal}`
+          if (Number.isFinite(launchMarkerMs ?? Number.NaN)) {
+            const lx = xAt(Math.max(0, Math.min(maxT, launchMarkerMs as number)))
+            ctx.strokeStyle = 'rgba(130, 245, 188, 0.78)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.moveTo(lx, padTop)
+            ctx.lineTo(lx, padTop + innerH)
+            ctx.stroke()
           }
 
           ctx.fillStyle = '#9cb4cc'
@@ -215,19 +293,32 @@ export function ProfileChart({
             const x = xAt(tick)
             ctx.fillText(String(Math.round(tick)), x - 8, padTop + innerH + 16)
           })
-          yTicks.forEach((tick) => {
-            const y = yAt(tick)
+          primaryYTicks.forEach((tick) => {
+            const y = yPrimaryAt(tick)
             const value = Math.abs(tick) < 1 ? tick.toFixed(2) : tick.toFixed(1)
             ctx.fillText(value, 8, y + 3)
+          })
+          secondaryYTicks.forEach((tick) => {
+            const y = ySecondaryAt(tick)
+            const value = Math.abs(tick) < 1 ? tick.toFixed(2) : tick.toFixed(1)
+            ctx.fillText(value, width - padRight + 6, y + 3)
           })
 
           ctx.fillStyle = '#cfe4ff'
           ctx.font = '11px sans-serif'
           ctx.fillText(t('labels.timeMs'), width - 82, height - 10)
+
           ctx.save()
-          ctx.translate(10, padTop + innerH / 2 + 20)
+          ctx.translate(12, padTop + innerH / 2 + 22)
           ctx.rotate(-Math.PI / 2)
-          ctx.fillText(yLabel, 0, 0)
+          ctx.fillText(primaryYLabel, 0, 0)
+          ctx.restore()
+
+          ctx.save()
+          ctx.translate(width - 10, padTop + innerH / 2 + 22)
+          ctx.rotate(-Math.PI / 2)
+          ctx.fillStyle = '#ffd1ef'
+          ctx.fillText(secondaryYLabel, 0, 0)
           ctx.restore()
         }}
       />

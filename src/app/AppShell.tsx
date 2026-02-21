@@ -32,7 +32,6 @@ const RECENT_Y_MAX_SP = 12000
 const LAUNCHER_TYPE_KEY = 'beymeter.launcherType'
 const NATIVE_CONNECT_TIMEOUT_MS = 15000
 
-type ChartTarget = 'sp' | 'tau'
 type ChartMode = 'avg' | 'overlay'
 type ConnectOverlayState = 'hidden' | 'connecting' | 'success' | 'error'
 
@@ -119,8 +118,26 @@ function toSnapshot(shot: PersistentShot): ShotSnapshot {
     maxSp: shot.maxSp,
     count: 0,
     profile: ensureProfile(shot.profile),
+    launchMarkerMs: shot.launchMarkerMs ?? null,
     estReason: 'persisted',
     receivedAt: shot.createdAt,
+  }
+}
+
+function trimProfileToTime(profile: ShotProfile, endMs: number | null | undefined): ShotProfile {
+  if (!Number.isFinite(endMs ?? Number.NaN)) return profile
+  const limit = endMs as number
+  const indexes = profile.tMs
+    .map((t, i) => ({ t, i }))
+    .filter((x) => x.t <= limit)
+    .map((x) => x.i)
+  if (indexes.length < 2) return profile
+  const end = indexes[indexes.length - 1]
+  return {
+    profilePoints: profile.profilePoints.slice(0, end + 1),
+    tMs: profile.tMs.slice(0, end + 1),
+    sp: profile.sp.slice(0, end + 1),
+    nRefs: profile.nRefs.slice(0, end + 1),
   }
 }
 
@@ -202,8 +219,6 @@ export function AppShell() {
   const launcherTypeRef = useRef(launcherType)
 
   const [selectedBandId, setSelectedBandId] = useState(BAND_DEFS[0].id)
-  const [currentChartTarget, setCurrentChartTarget] = useState<ChartTarget>('sp')
-  const [bandChartTarget, setBandChartTarget] = useState<ChartTarget>('sp')
   const [bandChartMode, setBandChartMode] = useState<ChartMode>('avg')
   const [isMobileLayout, setIsMobileLayout] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
@@ -311,11 +326,12 @@ export function AppShell() {
         }
 
         const profile = ensureProfile(snapshot.profile)
+        const analysisProfile = trimProfileToTime(profile, snapshot.launchMarkerMs)
 
         void (async () => {
-          const decaySegment = detectDecaySegment(profile)
-          const frictionFit = fitFriction(profile, decaySegment)
-          const { torqueSeries, torqueFeatures } = computeTorque(profile, frictionFit, decaySegment)
+          const decaySegment = detectDecaySegment(analysisProfile)
+          const frictionFit = fitFriction(analysisProfile, decaySegment)
+          const { torqueSeries, torqueFeatures } = computeTorque(analysisProfile, frictionFit, decaySegment)
 
           const shot: PersistentShot = {
             id: `${snapshot.receivedAt}-${Math.random().toString(36).slice(2, 8)}`,
@@ -325,8 +341,9 @@ export function AppShell() {
             estSp: snapshot.estSp,
             maxSp: snapshot.maxSp,
             chosenSpType: 'est',
+            launchMarkerMs: snapshot.launchMarkerMs ?? null,
             profile,
-            features: computeShotFeatures(profile),
+            features: computeShotFeatures(analysisProfile),
             decaySegment,
             frictionFit,
             torqueSeries,
@@ -400,6 +417,12 @@ export function AppShell() {
     return () => window.clearTimeout(timer)
   }, [bleUi.lastError])
 
+  useEffect(() => {
+    if (!recentNotice) return
+    const timer = window.setTimeout(() => setRecentNotice(null), 2800)
+    return () => window.clearTimeout(timer)
+  }, [recentNotice])
+
   const latest = viewState.latest
   const latestProfile = latest?.profile ?? null
   const peakIndex = latestProfile ? findFirstPeakIndex(latestProfile.tMs, latestProfile.sp) : 0
@@ -427,14 +450,63 @@ export function AppShell() {
     [latestProfile],
   )
   const latestVisibleTorqueSeries = latestTorqueSeries ?? latestFallbackTorqueSeries
+  const latestTorqueProfile = useMemo(
+    () =>
+      latestVisibleTorqueSeries
+        ? {
+            profilePoints: latestVisibleTorqueSeries.tMs.map((tMs, i) => ({
+              tMs,
+              sp: latestVisibleTorqueSeries.tau[i] ?? 0,
+              nRefs: 0,
+              dtMs: i > 0 ? tMs - latestVisibleTorqueSeries.tMs[i - 1] : tMs,
+            })),
+            tMs: latestVisibleTorqueSeries.tMs,
+            sp: latestVisibleTorqueSeries.tau,
+            nRefs: latestVisibleTorqueSeries.tau.map(() => 0),
+          }
+        : null,
+    [latestVisibleTorqueSeries],
+  )
+  const latestTorquePeakIndex = useMemo(() => {
+    if (!latestVisibleTorqueSeries || latestVisibleTorqueSeries.tau.length === 0) return 0
+    let maxIdx = 0
+    let maxVal = Number.NEGATIVE_INFINITY
+    for (let i = 0; i < latestVisibleTorqueSeries.tau.length; i += 1) {
+      const v = latestVisibleTorqueSeries.tau[i] ?? Number.NEGATIVE_INFINITY
+      if (v > maxVal) {
+        maxVal = v
+        maxIdx = i
+      }
+    }
+    return maxIdx
+  }, [latestVisibleTorqueSeries])
+  const latestTorquePeakTimeMs = useMemo(() => {
+    if (!latestVisibleTorqueSeries || latestVisibleTorqueSeries.tMs.length === 0) return null
+    let maxVal = Number.NEGATIVE_INFINITY
+    let maxIdx = 0
+    for (let i = 0; i < latestVisibleTorqueSeries.tau.length; i += 1) {
+      const v = latestVisibleTorqueSeries.tau[i] ?? Number.NEGATIVE_INFINITY
+      if (v > maxVal) {
+        maxVal = v
+        maxIdx = i
+      }
+    }
+    return Math.max(0, Number((latestVisibleTorqueSeries.tMs[maxIdx] ?? 0).toFixed(2)))
+  }, [latestVisibleTorqueSeries])
   const latestPeakTimeMs = useMemo(
     () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
     [latestProfile, peakIndex],
   )
+  const latestLaunchMarkerMs = latest?.launchMarkerMs ?? null
   const latestMaxSpText = useMemo(
     () => (latest ? `${latest.maxSp} rpm` : t('common.none')),
     [latest, t],
   )
+  const latestMaxTorqueText = useMemo(() => {
+    if (!latestVisibleTorqueSeries || latestVisibleTorqueSeries.tau.length === 0) return t('common.none')
+    const maxVal = Math.max(...latestVisibleTorqueSeries.tau)
+    return `${Number(maxVal.toFixed(3))} rpm/ms`
+  }, [latestVisibleTorqueSeries, t])
   const latestPersonalBest = useMemo(() => {
     if (!latestPersisted) return false
     const prevBest = persistedShots
@@ -502,24 +574,17 @@ export function AppShell() {
 
   const selectedBandStat = bandStats[selectedBandId]
   const hasSelectedBandData = (selectedBandStat?.count ?? 0) > 0
-  const selectedBandChartMeta = useMemo(() => {
+  const selectedBandSpMeta = useMemo(() => {
     const series = selectedBandShots
       .map((shot) => {
-        if (bandChartTarget === 'sp') {
-          const p = shot.profile
-          if (!p || p.tMs.length < 2 || p.sp.length < 2) return null
-          const t0 = p.tMs[0] ?? 0
-          return { t: p.tMs.map((t) => t - t0), y: p.sp }
-        }
-        const tau = shot.torqueSeries
-        if (!tau || tau.tMs.length < 2 || tau.tau.length < 2) return null
-        const t0 = tau.tMs[0] ?? 0
-        return { t: tau.tMs.map((t) => t - t0), y: tau.tau }
+        const p = shot.profile
+        if (!p || p.tMs.length < 2 || p.sp.length < 2) return null
+        const t0 = p.tMs[0] ?? 0
+        return { t: p.tMs.map((x) => x - t0), y: p.sp }
       })
       .filter((s): s is { t: number[]; y: number[] } => s !== null)
-
     if (series.length === 0) return null
-    const agg = aggregateSeries(series, 0, RECENT_X_MAX_MS, 10)
+    const agg = aggregateSeries(series, 0, RECENT_X_MAX_MS, 1)
     let peakTimeMs = 0
     let maxValue = Number.NaN
     for (let i = 0; i < agg.newTime.length; i += 1) {
@@ -531,8 +596,39 @@ export function AppShell() {
       }
     }
     if (!Number.isFinite(maxValue)) return null
-    return { peakTimeMs: Math.round(peakTimeMs), maxValue }
-  }, [bandChartTarget, selectedBandShots])
+    return { peakTimeMs: Math.round(peakTimeMs), maxValue: Number(maxValue.toFixed(2)) }
+  }, [selectedBandShots])
+  const selectedBandTauMeta = useMemo(() => {
+    const series = selectedBandShots
+      .map((shot) => {
+        const tau = shot.torqueSeries
+        if (!tau || tau.tMs.length < 2 || tau.tau.length < 2) return null
+        const t0 = tau.tMs[0] ?? 0
+        return { t: tau.tMs.map((x) => x - t0), y: tau.tau }
+      })
+      .filter((s): s is { t: number[]; y: number[] } => s !== null)
+    if (series.length === 0) return null
+    const agg = aggregateSeries(series, 0, RECENT_X_MAX_MS, 1)
+    let peakTimeMs = 0
+    let maxValue = Number.NaN
+    for (let i = 0; i < agg.newTime.length; i += 1) {
+      const v = agg.mean[i]
+      if (!Number.isFinite(v)) continue
+      if (!Number.isFinite(maxValue) || v > maxValue) {
+        maxValue = v
+        peakTimeMs = agg.newTime[i] ?? 0
+      }
+    }
+    if (!Number.isFinite(maxValue)) return null
+    return { peakTimeMs: Math.round(peakTimeMs), maxValue: Number(maxValue.toFixed(3)) }
+  }, [selectedBandShots])
+  const selectedBandLaunchMarkerMs = useMemo(() => {
+    const vals = selectedBandShots
+      .map((s) => s.launchMarkerMs)
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    if (vals.length === 0) return null
+    return Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2))
+  }, [selectedBandShots])
   const maxBandCount = useMemo(
     () => Math.max(1, ...BAND_DEFS.map((b) => bandStats[b.id]?.count ?? 0)),
     [bandStats],
@@ -636,6 +732,7 @@ export function AppShell() {
       onLauncherTypeChange={setLauncherType}
       onConnect={() => void handleConnect()}
       onDisconnect={handleDisconnect}
+      connectNotice={!isMobileLayout ? recentNotice : null}
     />
   )
 
@@ -651,32 +748,34 @@ export function AppShell() {
           title={t('recent.title')}
           description={t('recent.description')}
         />
-        <div className="recent-status-row" aria-label={t('recent.statusAria')}>
-          <div className="status-item compact">
-            <span
-              className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`}
-            />
-            <span>
-              {bleUi.connecting
-                ? t('common.connecting')
-                : bleUi.disconnecting
-                  ? t('common.disconnecting')
-                  : bleUi.connected
-                    ? t('ble.connected')
-                    : t('ble.disconnected')}
-            </span>
-          </div>
-          <div className="status-item compact">
-            <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
-            <span>{bleUi.connected ? (isBayAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')}</span>
-          </div>
-          {bleUi.lastError ? (
+        {isMobileLayout ? (
+          <div className="recent-status-row" aria-label={t('recent.statusAria')}>
             <div className="status-item compact">
-              <span className="status-dot on error" />
-              <span>{t('ble.commError')}</span>
+              <span
+                className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`}
+              />
+              <span>
+                {bleUi.connecting
+                  ? t('common.connecting')
+                  : bleUi.disconnecting
+                    ? t('common.disconnecting')
+                    : bleUi.connected
+                      ? t('ble.connected')
+                      : t('ble.disconnected')}
+              </span>
             </div>
-          ) : null}
-        </div>
+            <div className="status-item compact">
+              <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
+              <span>{bleUi.connected ? (isBayAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')}</span>
+            </div>
+            {bleUi.lastError ? (
+              <div className="status-item compact">
+                <span className="status-dot on error" />
+                <span>{t('ble.commError')}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="current-section">
         <NeonPanel className="current-left">
@@ -724,54 +823,27 @@ export function AppShell() {
               </div>
             ) : null}
             <div className="shot-meta">
-              <span>{t('recent.peak')}: {latest ? `${latestPeakTimeMs}ms` : t('common.none')}</span>
-              <span>{t('recent.maxShotPower')}: {latest ? `${latest.maxSp} rpm` : t('common.none')}</span>
+              <span>{t('recent.peakShotPower')}: {latest ? `${latestPeakTimeMs}ms / ${latest.maxSp} rpm` : t('common.none')}</span>
+              <span>{t('recent.peakInputTorque')}: {latestTorquePeakTimeMs !== null ? `${latestTorquePeakTimeMs}ms / ${latestMaxTorqueText}` : t('common.none')}</span>
+              <span>{t('recent.launchPoint')}: {latestLaunchMarkerMs !== null ? `${Number(latestLaunchMarkerMs.toFixed(2))}ms` : t('common.none')}</span>
             </div>
           </div>
-          {recentNotice ? <div className="mobile-recent-msg success">{recentNotice}</div> : null}
+          {isMobileLayout && recentNotice ? <div className="mobile-recent-msg success">{recentNotice}</div> : null}
           {mobileGuideMessage ? <div className="mobile-recent-msg">{mobileGuideMessage}</div> : null}
-          <SegmentedToggle
-            value={currentChartTarget}
-            onChange={setCurrentChartTarget}
-            options={[
-              { value: 'sp', label: t('recent.spSeries') },
-              { value: 'tau', label: t('recent.torqueSeries') },
-            ]}
+          <ProfileChart
+            profile={latestProfile}
+            peakIndex={peakIndex}
+            secondaryProfile={latestTorqueProfile}
+            secondaryPeakIndex={latestTorquePeakIndex}
+            timeMode="start"
+            primaryYLabel={t('labels.shotPowerRpm')}
+            secondaryYLabel={t('labels.inputTorque')}
+            fixedXMaxMs={RECENT_X_MAX_MS}
+            fixedPrimaryYMax={RECENT_Y_MAX_SP}
+            fixedXTicks={[0, 100, 200, 300, 400]}
+            fixedPrimaryYTicks={[0, 3000, 6000, 9000, 12000]}
+            launchMarkerMs={latestLaunchMarkerMs}
           />
-          {currentChartTarget === 'sp' ? (
-            <ProfileChart
-              profile={latestProfile}
-              peakIndex={peakIndex}
-              timeMode="start"
-              yLabel={t('labels.shotPowerRpm')}
-              fixedXMaxMs={RECENT_X_MAX_MS}
-              fixedYMax={RECENT_Y_MAX_SP}
-              fixedXTicks={[0, 100, 200, 300, 400]}
-              fixedYTicks={[0, 3000, 6000, 9000, 12000]}
-            />
-          ) : latestVisibleTorqueSeries ? (
-            <ProfileChart
-              profile={{
-                profilePoints: latestVisibleTorqueSeries.tMs.map((tMs, i) => ({
-                  tMs,
-                  sp: latestVisibleTorqueSeries.tau[i] ?? 0,
-                  nRefs: 0,
-                  dtMs: i > 0 ? tMs - latestVisibleTorqueSeries.tMs[i - 1] : tMs,
-                })),
-                tMs: latestVisibleTorqueSeries.tMs,
-                sp: latestVisibleTorqueSeries.tau,
-                nRefs: latestVisibleTorqueSeries.tau.map(() => 0),
-              }}
-              peakIndex={Math.max(0, latestVisibleTorqueSeries.tau.findIndex((x) => x === Math.max(...latestVisibleTorqueSeries.tau)))}
-              timeMode="start"
-              yLabel={t('labels.inputTorque')}
-              fixedXMaxMs={RECENT_X_MAX_MS}
-              fixedXTicks={[0, 100, 200, 300, 400]}
-              drawZeroLine={true}
-            />
-          ) : (
-            <div className="empty">{t('recent.torqueEmpty')}</div>
-          )}
         </NeonPanel>
       </div>
     </section>
@@ -833,26 +905,12 @@ export function AppShell() {
               <span className="inline-unit"> rpm</span>
             </h3>
             <div className="shot-meta">
-              <span>{t('history.peakAvg')}: {selectedBandChartMeta ? `${selectedBandChartMeta.peakTimeMs}ms` : t('common.none')}</span>
-              <span>
-                {bandChartTarget === 'sp' ? `${t('history.maxShotPowerAvg')}: ` : `${t('history.maxTorqueAvg')}: `}
-                {selectedBandChartMeta
-                  ? `${bandChartTarget === 'sp'
-                    ? Math.round(selectedBandChartMeta.maxValue)
-                    : Number(selectedBandChartMeta.maxValue.toFixed(2))} ${bandChartTarget === 'sp' ? 'rpm' : 'rpm/ms'}`
-                  : t('common.none')}
-              </span>
+              <span>{t('history.peakShotPowerAvg')}: {selectedBandSpMeta ? `${selectedBandSpMeta.peakTimeMs}ms / ${Math.round(selectedBandSpMeta.maxValue)} rpm` : t('common.none')}</span>
+              <span>{t('history.peakInputTorqueAvg')}: {selectedBandTauMeta ? `${selectedBandTauMeta.peakTimeMs}ms / ${selectedBandTauMeta.maxValue} rpm/ms` : t('common.none')}</span>
+              <span>{t('history.launchPointAvg')}: {selectedBandLaunchMarkerMs !== null ? `${selectedBandLaunchMarkerMs}ms` : t('common.none')}</span>
             </div>
           </div>
           <div className="segment-row">
-            <SegmentedToggle
-              value={bandChartTarget}
-              onChange={setBandChartTarget}
-              options={[
-                { value: 'sp', label: t('recent.spSeries') },
-                { value: 'tau', label: t('recent.torqueSeries') },
-              ]}
-            />
             <SegmentedToggle
               value={bandChartMode}
               onChange={setBandChartMode}
@@ -866,19 +924,17 @@ export function AppShell() {
           <BandChart
             shots={selectedBandShots}
             mode={bandChartMode}
-            seriesTarget={bandChartTarget}
-            alignment="start"
-            normalize={false}
             rangeStart={0}
             rangeEnd={RECENT_X_MAX_MS}
-            fixedYMin={bandChartTarget === 'tau' ? undefined : 0}
-            fixedYMax={bandChartTarget === 'tau' ? undefined : RECENT_Y_MAX_SP}
+            fixedSpYMin={0}
+            fixedSpYMax={RECENT_Y_MAX_SP}
             fixedXTicks={[0, 100, 200, 300, 400]}
-            fixedYTicks={bandChartTarget === 'tau' ? undefined : [0, 3000, 6000, 9000, 12000]}
+            fixedSpYTicks={[0, 3000, 6000, 9000, 12000]}
             xLabel={t('labels.timeMs')}
-            yLabel={bandChartTarget === 'tau' ? t('labels.inputTorque') : t('labels.shotPowerRpm')}
+            spYLabel={t('labels.shotPowerRpm')}
+            torqueYLabel={t('labels.inputTorque')}
             maxOverlay={20}
-            drawZeroLine={bandChartTarget === 'tau'}
+            launchMarkerMsAvg={selectedBandLaunchMarkerMs}
           />
 
           <div className="stats-two-col">

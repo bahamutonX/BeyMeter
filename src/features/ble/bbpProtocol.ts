@@ -16,6 +16,7 @@ import {
 const PROFILE_MIN_POINTS = 7
 const PROFILE_EARLY_WINDOW = 14
 const A0_ATTACHED_VALUES = new Set([0x04, 0x14])
+const A0_RELEASE_WINDOW_MS = 2000
 
 function toProtocolError(
   code: ProtocolError['code'],
@@ -46,6 +47,21 @@ function isSupportedHeader(header: number): boolean {
     return true
   }
   return header >= HEADER_PROF_FIRST && header <= HEADER_PROF_LAST
+}
+
+function findFirstPeakIndexSimple(tMs: number[], sp: number[]): number {
+  if (tMs.length === 0 || sp.length === 0) return 0
+  if (sp.length < 3) return Math.max(0, sp.findIndex((x) => x === Math.max(...sp)))
+  const globalMax = Math.max(...sp)
+  const minPeakSp = Math.max(500, globalMax * 0.2)
+  for (let i = 1; i < sp.length - 1; i += 1) {
+    const isLocalMax = sp[i - 1] < sp[i] && sp[i] >= sp[i + 1]
+    if (!isLocalMax) continue
+    if (sp[i] < minPeakSp) continue
+    if ((tMs[i] ?? 0) < 20) continue
+    return i
+  }
+  return Math.max(0, sp.findIndex((x) => x === globalMax))
 }
 
 function computeProfile(bytesByHeader: Map<number, Uint8Array>, bbpSp: number): {
@@ -184,6 +200,8 @@ export class BbpProtocol {
 
   private latestBbpTotalShots: number | null = null
 
+  private lastReleaseEventAt: number | null = null
+
   parsePacket(value: DataView | Uint8Array): BbpPacket {
     const bytes =
       value instanceof Uint8Array
@@ -226,6 +244,9 @@ export class BbpProtocol {
       // A0[3] = 0x00 => detached
       const attachCode = packet.bytes[3] ?? 0x00
       this.latestBeyAttached = A0_ATTACHED_VALUES.has(attachCode)
+      if (attachCode === 0x00) {
+        this.lastReleaseEventAt = packet.timestamp
+      }
       this.latestBbpTotalShots =
         packet.bytes.length > 10 ? readU16LE(packet.bytes, 9) : null
       return null
@@ -397,14 +418,25 @@ export class BbpProtocol {
       estReason = 'estimated_from_profile'
     }
 
+    const shotTimestamp = Date.now()
+    const releaseDetected =
+      this.lastReleaseEventAt !== null &&
+      shotTimestamp - this.lastReleaseEventAt >= 0 &&
+      shotTimestamp - this.lastReleaseEventAt <= A0_RELEASE_WINDOW_MS
+    const launchMarkerMs =
+      releaseDetected && profileResult.profile
+        ? profileResult.profile.tMs[findFirstPeakIndexSimple(profileResult.profile.tMs, profileResult.profile.sp)] ?? null
+        : null
+
     const snapshot = {
       yourSp,
       estSp,
       maxSp: profileResult.maxSp,
       count: n,
       profile: profileResult.profile,
+      launchMarkerMs,
       estReason,
-      receivedAt: Date.now(),
+      receivedAt: shotTimestamp,
     }
 
     this.clearMap()

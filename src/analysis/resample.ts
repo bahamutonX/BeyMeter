@@ -29,3 +29,23 @@ export function resampleLinear(time: number[], value: number[], newTime: number[
     return Number.NaN
   })
 }
+
+export function resampleStep(time: number[], value: number[], newTime: number[]): number[] {
+  if (time.length === 0 || value.length === 0) {
+    return newTime.map(() => Number.NaN)
+  }
+
+  return newTime.map((x) => {
+    if (x < time[0] || x > time[time.length - 1]) {
+      return Number.NaN
+    }
+
+    for (let i = 0; i < time.length; i += 1) {
+      if (time[i] >= x) {
+        return value[i]
+      }
+    }
+
+    return value[value.length - 1] ?? Number.NaN
+  })
+}

@@ -2,7 +2,7 @@ import type { ShotProfile } from '../features/ble/bbpTypes'
 import type { FrictionFitResult } from './frictionFit'
 import type { DecaySegment } from './decayDetect'
 import { findFirstPeakIndex } from './firstPeak'
-import { derivativeCentral } from './signal'
+import { derivativeCentral, smoothMovingAverage } from './signal'
 
 export interface TorqueSeries {
   tMs: number[]
@@ -26,14 +26,23 @@ export function computeTorque(
     return { torqueSeries: null, torqueFeatures: null }
   }
 
-  const t = profile.tMs
-  const w = profile.sp
-  // Input proxy: angular acceleration from the measured RPM/time profile.
-  // Unit: rpm/ms
-  const accel = derivativeCentral(t, w).map((v) => (Number.isFinite(v) ? v : 0))
+  const baseT = profile.tMs
+  const baseW = profile.sp
+  const peakIndex = findFirstPeakIndex(baseT, baseW)
+  const t = baseT.slice(0, peakIndex + 1)
+  const w = baseW.slice(0, peakIndex + 1)
+
+  if (t.length < 2 || w.length < 2) {
+    return { torqueSeries: null, torqueFeatures: null }
+  }
+
+  // Input proxy: derivative of smoothed RPM profile.
+  // Keep only positive component for "input torque (relative)" readability.
+  const smoothedW = smoothMovingAverage(w, 3)
+  const accelRaw = derivativeCentral(t, smoothedW).map((v) => (Number.isFinite(v) ? v : 0))
+  const accel = accelRaw.map((v) => Math.max(0, v))
 
   // Prefer pre-decay positive peak as "max input" estimate.
-  const peakIndex = findFirstPeakIndex(t, w)
   const inputEnd = Math.max(
     0,
     Math.min(

@@ -9,6 +9,7 @@ interface HeaderProps {
   lastError: string | null
   launcherType: LauncherType
   launcherOptions: Array<{ value: LauncherType; label: string }>
+  connectNotice?: string | null
   onLauncherTypeChange: (value: LauncherType) => void
   onConnect: () => void
   onDisconnect: () => void
@@ -39,6 +40,7 @@ export function Header({
   lastError,
   launcherType,
   launcherOptions,
+  connectNotice,
   onLauncherTypeChange,
   onConnect,
   onDisconnect,
@@ -103,6 +105,7 @@ export function Header({
         </div>
       </div>
       {connecting ? <div className="hint-line">{t('ble.holdToPair')}</div> : null}
+      {connectNotice ? <div className="hint-line success">{connectNotice}</div> : null}
       {lastError ? (
         <div className="hint-line error">{lastError}</div>
       ) : null}

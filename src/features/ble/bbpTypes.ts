@@ -51,6 +51,7 @@ export interface ShotSnapshot {
   maxSp: number
   count: number
   profile: ShotProfile | null
+  launchMarkerMs?: number | null
   estReason: string
   receivedAt: number
 }

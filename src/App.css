@@ -339,6 +339,10 @@
   color: #ff9090;
 }
 
+.hint-line.success {
+  color: #9beec5;
+}
+
 @keyframes pulse {
   0% { opacity: 0.35; box-shadow: 0 0 2px rgba(88, 224, 255, 0.25); }
   50% { opacity: 1; box-shadow: 0 0 10px rgba(88, 224, 255, 0.9); }
