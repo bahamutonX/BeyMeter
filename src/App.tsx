@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { AppShell } from './app/AppShell'
 import { RawLogPage } from './app/RawLogPage'
+import { subscribeNavigation } from './app/navigation'
 
 function resolveCurrentPath(): string {
   const current = window.location.pathname
@@ -17,7 +18,7 @@ function resolveCurrentPath(): string {
 }
 
 function App() {
-  const [path] = useState(() => resolveCurrentPath())
+  const [path, setPath] = useState(() => resolveCurrentPath())
   const isRawLogPath =
     path.endsWith('/RawLog') ||
     path.includes('/RawLog/') ||
@@ -32,6 +33,12 @@ function App() {
     }, 1000)
     return () => window.clearTimeout(timer)
   }, [isRawLogPath])
+
+  useEffect(() => {
+    return subscribeNavigation(() => {
+      setPath(resolveCurrentPath())
+    })
+  }, [])
 
   if (isRawLogPath) {
     return <RawLogPage />

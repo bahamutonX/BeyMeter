@@ -78,6 +78,7 @@ export class WebBluetoothBleService implements BleServiceClient {
 
   setHandlers(handlers: BleNotifyHandlers): void {
     this.handlers = handlers
+    this.emitState()
   }
 
   async connectWithBestEffort(interactive = false): Promise<boolean> {

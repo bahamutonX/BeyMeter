@@ -8,7 +8,6 @@ interface ProfileChartProps {
   peakIndex: number
   secondaryProfile?: ShotProfile | null
   secondaryPeakIndex?: number
-  launchMarkerMs?: number | null
   timeMode?: 'start' | 'peak'
   primaryYLabel?: string
   secondaryYLabel?: string
@@ -42,19 +41,7 @@ function buildTicks(min: number, max: number, count = 6): number[] {
   return ticks
 }
 
-function safeRange(values: number[]): [number, number] {
-  const valid = values.filter((v) => Number.isFinite(v))
-  if (valid.length === 0) return [0, 1]
-  let min = Math.min(...valid)
-  let max = Math.max(...valid)
-  if (min > 0) min = 0
-  if (min === max) {
-    max += 1
-  }
-  return [min, max]
-}
-
-function drawStepSeries(
+function drawLineSeries(
   ctx: CanvasRenderingContext2D,
   tMs: number[],
   y: number[],
@@ -65,8 +52,6 @@ function drawStepSeries(
 ) {
   if (tMs.length === 0 || y.length === 0) return
   let started = false
-  let prevX = 0
-  let prevY = 0
 
   for (let i = 0; i < Math.min(tMs.length, y.length); i += 1) {
     const tx = tMs[i]
@@ -74,21 +59,14 @@ function drawStepSeries(
     if (!Number.isFinite(tx) || !Number.isFinite(vy)) continue
     if (tx < rangeStart) continue
     if (tx > rangeEnd) break
-    const x = xAt(tx)
+    const px = xAt(tx)
     const py = yAt(vy)
     if (!started) {
-      ctx.moveTo(x, py)
+      ctx.moveTo(px, py)
       started = true
     } else {
-      ctx.lineTo(x, prevY)
-      ctx.lineTo(x, py)
+      ctx.lineTo(px, py)
     }
-    prevX = x
-    prevY = py
-  }
-
-  if (started) {
-    ctx.lineTo(prevX, prevY)
   }
 }
 
@@ -97,7 +75,6 @@ export function ProfileChart({
   peakIndex,
   secondaryProfile = null,
   secondaryPeakIndex = 0,
-  launchMarkerMs = null,
   timeMode = 'start',
   primaryYLabel = 'SP',
   secondaryYLabel = 'Input',
@@ -168,7 +145,7 @@ export function ProfileChart({
           const minPrimaryY = 0
           const maxPrimaryY = fixedPrimaryYMax ?? Math.max(...chart.primary.y)
 
-          const [minSecondaryY, maxSecondaryY] = safeRange(chart.secondary?.y ?? [])
+          const [minSecondaryY, maxSecondaryY] = [0, 100]
 
           const xAt = (tVal: number) => padLeft + ((tVal - minT) / Math.max(1, maxT - minT)) * innerW
           const yPrimaryAt = (v: number) => padTop + (1 - (v - minPrimaryY) / Math.max(1, maxPrimaryY - minPrimaryY)) * innerH
@@ -226,14 +203,14 @@ export function ProfileChart({
           ctx.lineWidth = 2
           ctx.beginPath()
           const clampedPrimaryY = chart.primary.y.map((v) => Math.max(minPrimaryY, Math.min(maxPrimaryY, v)))
-          drawStepSeries(ctx, chart.primary.tMs, clampedPrimaryY, xAt, yPrimaryAt, 0, maxT)
+          drawLineSeries(ctx, chart.primary.tMs, clampedPrimaryY, xAt, yPrimaryAt, 0, maxT)
           ctx.stroke()
 
           if (chart.secondary) {
             ctx.strokeStyle = '#ff83d1'
             ctx.lineWidth = 2
             ctx.beginPath()
-            drawStepSeries(ctx, chart.secondary.tMs, chart.secondary.y, xAt, ySecondaryAt, 0, maxT)
+            drawLineSeries(ctx, chart.secondary.tMs, chart.secondary.y, xAt, ySecondaryAt, 0, maxT)
             ctx.stroke()
           }
 
@@ -277,30 +254,22 @@ export function ProfileChart({
             ctx.fill()
           }
 
-          if (Number.isFinite(launchMarkerMs ?? Number.NaN)) {
-            const lx = xAt(Math.max(0, Math.min(maxT, launchMarkerMs as number)))
-            ctx.strokeStyle = 'rgba(130, 245, 188, 0.78)'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(lx, padTop)
-            ctx.lineTo(lx, padTop + innerH)
-            ctx.stroke()
-          }
-
           ctx.fillStyle = '#9cb4cc'
           ctx.font = '10px sans-serif'
           xTicks.forEach((tick) => {
             const x = xAt(tick)
             ctx.fillText(String(Math.round(tick)), x - 8, padTop + innerH + 16)
           })
+          ctx.textAlign = 'right'
           primaryYTicks.forEach((tick) => {
             const y = yPrimaryAt(tick)
-            const value = Math.abs(tick) < 1 ? tick.toFixed(2) : tick.toFixed(1)
-            ctx.fillText(value, 8, y + 3)
+            const value = String(Math.round(tick))
+            ctx.fillText(value, padLeft - 6, y + 3)
           })
+          ctx.textAlign = 'left'
           secondaryYTicks.forEach((tick) => {
             const y = ySecondaryAt(tick)
-            const value = Math.abs(tick) < 1 ? tick.toFixed(2) : tick.toFixed(1)
+            const value = String(Math.round(tick))
             ctx.fillText(value, width - padRight + 6, y + 3)
           })
 

@@ -18,7 +18,6 @@ interface BandChartProps {
   spYLabel?: string
   torqueYLabel?: string
   maxOverlay?: number
-  launchMarkerMsAvg?: number | null
 }
 
 function buildTicks(min: number, max: number, count = 6): number[] {
@@ -30,17 +29,7 @@ function buildTicks(min: number, max: number, count = 6): number[] {
   return ticks
 }
 
-function safeRange(values: number[], fallback: [number, number]): [number, number] {
-  const valid = values.filter((v) => Number.isFinite(v))
-  if (valid.length === 0) return fallback
-  let min = Math.min(...valid)
-  let max = Math.max(...valid)
-  if (min > 0) min = 0
-  if (min === max) max += 1
-  return [min, max]
-}
-
-function drawStepSeries(
+function drawLineSeries(
   ctx: CanvasRenderingContext2D,
   tMs: number[],
   y: number[],
@@ -51,29 +40,20 @@ function drawStepSeries(
 ) {
   if (tMs.length === 0 || y.length === 0) return
   let started = false
-  let prevX = 0
-  let prevY = 0
-
   for (let i = 0; i < Math.min(tMs.length, y.length); i += 1) {
     const tx = tMs[i]
     const vy = y[i]
     if (!Number.isFinite(tx) || !Number.isFinite(vy)) continue
     if (tx < rangeStart) continue
     if (tx > rangeEnd) break
-    const x = xAt(tx)
+    const px = xAt(tx)
     const py = yAt(vy)
     if (!started) {
-      ctx.moveTo(x, py)
+      ctx.moveTo(px, py)
       started = true
     } else {
-      ctx.lineTo(x, prevY)
-      ctx.lineTo(x, py)
+      ctx.lineTo(px, py)
     }
-    prevX = x
-    prevY = py
-  }
-  if (started) {
-    ctx.lineTo(prevX, prevY)
   }
 }
 
@@ -90,7 +70,6 @@ export function BandChart({
   spYLabel = 'Shot Power (rpm)',
   torqueYLabel = 'Input Torque (Relative)',
   maxOverlay = 20,
-  launchMarkerMsAvg = null,
 }: BandChartProps) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -158,11 +137,7 @@ export function BandChart({
         ctx.strokeStyle = `rgba(88,224,255,${Math.max(0.08, 0.3 - idx * 0.01)})`
         ctx.lineWidth = 1
         ctx.beginPath()
-        ctx.moveTo(xAt(series.t[0]), ySpAt(series.y[0]))
-        for (let i = 1; i < series.t.length; i += 1) {
-          if (series.t[i] < rangeStart || series.t[i] > rangeEnd) continue
-          ctx.lineTo(xAt(series.t[i]), ySpAt(series.y[i]))
-        }
+        drawLineSeries(ctx, series.t, series.y, xAt, ySpAt, rangeStart, rangeEnd)
         ctx.stroke()
       })
 
@@ -229,7 +204,7 @@ export function BandChart({
       }
     }
 
-    const [minTauY, maxTauY] = safeRange(displayTauY, [0, 1])
+    const [minTauY, maxTauY] = [0, 100]
     const yTauAt = (v: number) => padTop + (1 - (v - minTauY) / Math.max(1e-9, maxTauY - minTauY)) * innerH
 
     // grid and axes over lines
@@ -278,14 +253,14 @@ export function BandChart({
     ctx.strokeStyle = '#58e0ff'
     ctx.lineWidth = 2
     ctx.beginPath()
-    drawStepSeries(ctx, displaySpT, displaySpY, xAt, ySpAt, rangeStart, rangeEnd)
+    drawLineSeries(ctx, displaySpT, displaySpY, xAt, ySpAt, rangeStart, rangeEnd)
     ctx.stroke()
 
     if (displayTauY.length > 0) {
       ctx.strokeStyle = '#ff83d1'
       ctx.lineWidth = 2
       ctx.beginPath()
-      drawStepSeries(ctx, displayTauT, displayTauY, xAt, yTauAt, rangeStart, rangeEnd)
+      drawLineSeries(ctx, displayTauT, displayTauY, xAt, yTauAt, rangeStart, rangeEnd)
       ctx.stroke()
     }
 
@@ -348,27 +323,19 @@ export function BandChart({
       ctx.fill()
     }
 
-    if (Number.isFinite(launchMarkerMsAvg ?? Number.NaN)) {
-      const lx = xAt(Math.max(rangeStart, Math.min(rangeEnd, launchMarkerMsAvg as number)))
-      ctx.strokeStyle = 'rgba(130, 245, 188, 0.78)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(lx, padTop)
-      ctx.lineTo(lx, padTop + innerH)
-      ctx.stroke()
-    }
-
     ctx.fillStyle = '#9cb4cc'
     ctx.font = '10px sans-serif'
     for (const xTick of xTicks) {
       ctx.fillText(String(Math.round(xTick)), xAt(xTick) - 8, padTop + innerH + 16)
     }
+    ctx.textAlign = 'right'
     for (const yTick of spTicks) {
-      const value = Math.abs(yTick) < 1 ? yTick.toFixed(2) : yTick.toFixed(1)
-      ctx.fillText(value, 8, ySpAt(yTick) + 3)
+      const value = String(Math.round(yTick))
+      ctx.fillText(value, padLeft - 6, ySpAt(yTick) + 3)
     }
+    ctx.textAlign = 'left'
     for (const yTick of tauTicks) {
-      const value = Math.abs(yTick) < 1 ? yTick.toFixed(2) : yTick.toFixed(1)
+      const value = String(Math.round(yTick))
       ctx.fillText(value, width - padRight + 6, yTauAt(yTick) + 3)
     }
 
@@ -402,7 +369,6 @@ export function BandChart({
     t,
     torqueYLabel,
     xLabel,
-    launchMarkerMsAvg,
   ])
 
   return <canvas className="profile-canvas" ref={canvasRef} />

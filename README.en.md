@@ -1,176 +1,84 @@
 # BeyMeter (English)
 
-BeyMeter is an app that connects to BEYBLADE Battle Pass and analyzes shot waveforms and history.
+**BeyMeter is a practical shot-improvement analytics app for BEYBLADE players.**  
+It connects to BEYBLADE Battle Pass and provides immediate feedback without waiting for long official-app animations.
 
-- Available as a Web app (PC Chrome/Edge) via URL
-- Runs on iOS / Android as a Capacitor native app
-- BLE layer is swappable between Web / Native
-- UI auto-switches `ja/en` by OS/browser language (no manual toggle)
+- Web Demo: https://bahamutonX.github.io/BeyMeter/
+- Repository: https://github.com/bahamutonX/BeyMeter
 
-## Web URL
-- https://bahamutonX.github.io/BeyMeter/
+## 1. What makes it useful
+- **Instant feedback**: Recorded Shot Power appears right after each shot
+- **Per-shot metrics**: Peak time, AUC-to-peak, and input torque behavior
+- **Time-series graph**: Shot Power + Input Torque (relative) in one chart
+- **Band comparison**: Aggregate and compare multi-shot behavior by power band
+- **Effective length estimate**: AUC ratio against launcher theory values
 
-## Supported Environments
-- Web: Google Chrome / Microsoft Edge (Web Bluetooth required)
-- iOS: Capacitor + CoreBluetooth (Safari alone is not supported)
-- Android: Capacitor + BLE
+## 2. Supported platforms
+- Web: Chrome / Edge (Web Bluetooth)
+- iOS: Capacitor native app
+- Android: Capacitor native app
 
-## How to Use (Web/PC)
-1. Long-press the Battle Pass button to enter pairing mode
-2. Click `Connect` in the header
-3. Select `BEYBLADE_TOOL01` from the device picker
-4. Choose your launcher type in the header, then start measuring
+## 3. Quick start
+1. Select launcher type (String / Winder / Long/Dragon)
+2. Press and hold the Battle Pass button (pairing state)
+3. Tap `Connect` in BeyMeter
+4. Shoot
+5. Review `Shot Analysis` and `History & Analysis`
 
-## UI Overview
+## 4. Screen structure
+### 4.1 Shot Analysis (single shot)
+Two grouped blocks are shown:
 
-### Mobile UI (iOS/Android)
-- 3-page swipe UI
-  - Left: Settings / Connection
-  - Center: Shot Analysis
-  - Right: History & Analysis
-- Bottom `○●○` indicator can also be tapped to move between pages
-- During connection, a guide modal is shown:
-  - Success: “Connected”
-  - Failure/timeout: error message shown
-  - You can stop the attempt with `Cancel`
+- **Shot Power Analysis**
+  - Shot Power Peak (ms, rpm)
+  - AUC to Peak
+  - Effective Length (`measured AUC / theoretical AUC`)
 
-### Shot Analysis
-- Recorded Shot Power
-  - The value recorded by the Battle Pass device (main value shown in current UI)
-- Launcher
-  - Launcher type used for that shot
-- Shot Type
-  - Pattern classification from waveform features
-  - (early-focus / late-boost / steady-input / fluctuating)
+- **Input Torque Analysis**
+  - Input Torque Peak (ms, rpm/ms)
+  - Input Torque Peak Position (%)
+  - Shot Type (Front-loaded / Constant / Back-loaded)
 
-### Latest Shot Waveform
-- X-axis: Time (ms)
-- Toggle between `Shot Power` and `Input Torque (Relative)`
-- Peak time and max shot power are shown at the top-right
+### 4.2 History & Analysis (multi-shot)
+- Select a shot-power band
+- Compare overlaid waveforms in the selected band
+- Two detail boxes:
+  - Shot Power Analysis (averaged)
+  - Input Torque Analysis (averaged)
+- Band stats also show launcher-wise effective length/rate (mean/SD)
 
-### History & Analysis
-- History is grouped by shot-power bands (step = 1000)
-- Per band:
-  - Total count
-  - Launcher breakdown (3 types)
-  - Mean / Max / Standard deviation
-- Detail metrics (mean / p50):
-  - Max Input Torque (Relative)
-  - t_50
-  - t_peak
-  - slope_max
-  - auc_0_peak
-  - spike_score
-  - early_input_ratio / late_input_ratio / peak_input_time / input_stability
-- Tap `ⓘ` on each metric for explanations
+## 5. Launcher constants (fixed)
+Used for effective-length estimation.
 
-## Launcher Recording
-- Choose launcher with 3 buttons in the header:
-  - String
-  - Winder
-  - Long/Dragon
-- Selected launcher is persisted with each shot
-- Band statistics can compare launcher counts
+- String: max rev 11 / theoretical AUC 660,000 / full length 50.0 cm
+- Winder: max rev 8 / theoretical AUC 480,000 / full length 20.5 cm
+- Long/Dragon: max rev 9 / theoretical AUC 540,000 / full length 22.5 cm
 
-## Debug Page
-- `/RawLog` is the raw packet log page
-- It is not linked from normal UI (direct URL only)
-
-## Development
+## 6. Development
 ```bash
 pnpm install
 pnpm dev
-```
-
-## i18n
-- Libraries:
-  - `i18next`
-  - `react-i18next`
-  - `i18next-browser-languagedetector`
-- Initialization:
-  - `src/i18n.ts`
-  - Detection source: `navigator` only
-  - `supportedLngs = ['en', 'ja']`
-  - `fallbackLng = 'en'`
-  - `load = 'languageOnly'` (`ja-JP` -> `ja`)
-- Translation files:
-  - `src/locales/en/translation.json`
-  - `src/locales/ja/translation.json`
-
-### Translation Rules
-- Use dot-separated key naming by feature scope
-  - Example: `recent.title`, `ble.connected`, `metrics.t_peak.label`
-- Use `useTranslation()` in React components (no hardcoded UI strings)
-- Use interpolation with `t('key', { value })`
-
-After native BLE updates:
-```bash
-pnpm cap:sync
-```
-
-### scripts
-```bash
-pnpm dev
 pnpm build
 pnpm lint
-pnpm preview
-pnpm build:pages
-pnpm preview:pages
-pnpm cap:sync
-pnpm cap:open:ios
-pnpm cap:open:android
-pnpm ios:add
-pnpm ios:sync
-pnpm ios:open
-pnpm android:add
-pnpm android:sync
-pnpm android:open
 ```
 
-## GitHub Pages
-- Repository: `https://github.com/bahamutonX/BeyMeter`
-- Build Pages bundle:
+### Capacitor sync
 ```bash
-pnpm build:pages
+pnpm exec cap sync
 ```
 
-Notes:
-- Assumes `VITE_BASE_PATH=/BeyMeter/`
-- `/RawLog` is also reachable via 404 rewrite routing
-
-## iOS Device Run
+### iOS
 ```bash
-pnpm build
-pnpm cap:sync
-pnpm cap:open:ios
+pnpm exec cap open ios
 ```
 
-First time only:
+### Android
 ```bash
-pnpm ios:add
+pnpm exec cap open android
 ```
 
-Notes:
-- Native BLE uses `@capacitor-community/bluetooth-le`
-- Run on device from Xcode after Team signing setup
+## 7. License
+MIT License
 
-## Android Device Run
-```bash
-pnpm build
-pnpm cap:sync
-pnpm cap:open:android
-```
-
-First time only:
-```bash
-pnpm android:add
-```
-
-Notes:
-- Native BLE uses `@capacitor-community/bluetooth-le`
-
-## License
-MIT License (`LICENSE`)
-
-## Author
-- by [@bahamutonX](https://x.com/bahamutonX)
+## 8. Author
+by [@bahamutonX](https://x.com/bahamutonX)

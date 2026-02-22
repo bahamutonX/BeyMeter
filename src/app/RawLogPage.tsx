@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BleService } from '../features/ble/BleService'
 import type { BbpPacket, ProtocolError } from '../features/ble/bbpTypes'
 import {
   HEADER_ATTACH,
@@ -11,6 +10,9 @@ import {
   HEADER_PROF_LAST,
 } from '../features/ble/bbpTypes'
 import { NeonPanel } from '../ui/NeonPanel'
+import { getBleService } from '../features/ble/bleSingleton'
+import { clearRawPackets, getRawPackets, pushRawPacket, subscribeRawPackets } from '../features/ble/rawPacketStore'
+import { navigateTo } from './navigation'
 
 interface RawLogState {
   connected: boolean
@@ -27,9 +29,13 @@ interface RawShotBundleView {
   tEnd: number
   packets: Array<{
     packet: BbpPacket
-    decoded: string[]
   }>
   isCompleteShot: boolean
+}
+
+interface BundleSummaryRow {
+  label: string
+  value: string
 }
 
 function formatTimestamp(ts: number): string {
@@ -50,121 +56,267 @@ function toHexByte(v: number): string {
   return `0x${v.toString(16).toUpperCase().padStart(2, '0')}`
 }
 
-function buildContextMap(packets: BbpPacket[], startIndex: number): Map<number, BbpPacket> {
-  const map = new Map<number, BbpPacket>()
-  for (let i = startIndex; i < packets.length; i += 1) {
-    const p = packets[i]
-    if (!map.has(p.header)) {
-      map.set(p.header, p)
-    }
-  }
-  return map
-}
-
 type TLike = (key: string, options?: Record<string, unknown>) => string
 
-function decodePacket(packet: BbpPacket, contextMap: Map<number, BbpPacket>, t: TLike): string[] {
-  const b = packet.bytes
-  const h = packet.header
+function findPacket(packets: BbpPacket[], header: number): BbpPacket | null {
+  return packets.find((p) => p.header === header) ?? null
+}
 
-  if (h === HEADER_ATTACH) {
-    const state = b[3] ?? 0
-    const attached = state === 0x04 || state === 0x14
-    const event = attached ? t('rawlog.decode.attachEvent') : t('rawlog.decode.detachEvent')
-    const maxSp = readU16LE(b, 7)
-    const totalShots = readU16LE(b, 9)
-    const uid = Array.from(b.slice(11, 17))
-      .map((v) => v.toString(16).toUpperCase().padStart(2, '0'))
-      .join(' ')
-    return [
-      t('rawlog.decode.a0Title'),
-      t('rawlog.decode.a0State', { value: toHexByte(state), event }),
-      t('rawlog.decode.a0Offset4', { value: b[4] ?? 0 }),
-      t('rawlog.decode.a0MaxSp', { value: maxSp }),
-      t('rawlog.decode.a0TotalShots', { value: totalShots }),
-      t('rawlog.decode.a0Uid', { value: uid }),
-    ]
+function getA0StateText(state: number, t: TLike): string {
+  switch (state) {
+    case 0x00:
+      return t('rawlog.summary.a0State00')
+    case 0x04:
+      return t('rawlog.summary.a0State04')
+    case 0x10:
+      return t('rawlog.summary.a0State10')
+    case 0x14:
+      return t('rawlog.summary.a0State14')
+    default:
+      return t('rawlog.summary.a0StateUnknown')
+  }
+}
+
+function collectProfileMetrics(packets: BbpPacket[]) {
+  const refs: number[] = []
+  for (let h = HEADER_PROF_FIRST; h <= HEADER_PROF_LAST; h += 1) {
+    const p = findPacket(packets, h)
+    if (!p) continue
+    for (let off = 1; off < p.bytes.length; off += 2) {
+      const nRefs = readU16LE(p.bytes, off)
+      if (nRefs > 0) refs.push(nRefs)
+    }
+  }
+  if (refs.length === 0) {
+    return {
+      points: 0,
+      tPeakMs: null as number | null,
+      peakSp: null as number | null,
+      totalMs: null as number | null,
+    }
   }
 
-  if (h >= HEADER_PROF_FIRST && h <= HEADER_PROF_LAST) {
-    const base = (h - HEADER_PROF_FIRST) * 8 + 1
-    const lines: string[] = [t('rawlog.decode.profileTitle', { header: toHexByte(h) })]
-    for (let i = 1, slot = 0; i < b.length; i += 2, slot += 1) {
-      const nRefs = readU16LE(b, i)
-      if (nRefs === 0) continue
-      const dtMs = nRefs / 125
-      const sp = Math.floor(7_500_000 / nRefs)
-      const ch = base + slot
-      lines.push(t('rawlog.decode.profileLine', { ch, nRefs, dtMs: dtMs.toFixed(3), sp }))
+  let elapsed = 0
+  let peakSp = 0
+  let tPeakMsRaw = 0
+  let tStartRaw: number | null = null
+  let tEndRaw = 0
+  for (const nRefs of refs) {
+    const dtMs = nRefs / 125
+    elapsed += dtMs
+    const sp = Math.floor(7_500_000 / nRefs)
+    if (tStartRaw === null && nRefs > 0 && sp > 0) {
+      tStartRaw = elapsed
     }
-    if (lines.length === 1) {
-      lines.push(t('rawlog.decode.profileNoData'))
+    if (sp > peakSp) {
+      peakSp = sp
+      tPeakMsRaw = elapsed
     }
-    return lines
+    tEndRaw = elapsed
   }
+  const t0 = tStartRaw ?? 0
+  const tPeakMs = Math.max(0, tPeakMsRaw - t0)
+  const totalMs = Math.max(0, tEndRaw - t0)
+  return {
+    points: refs.length,
+    tPeakMs,
+    peakSp,
+    totalMs,
+  }
+}
 
-  if (h >= HEADER_LIST_FIRST && h <= HEADER_LIST_LAST) {
-    const base = (h - HEADER_LIST_FIRST) * 8 + 1
-    const lines: string[] = [t('rawlog.decode.listTitle', { header: toHexByte(h) })]
-    const maxSlots = h === HEADER_LIST_LAST ? 2 : 8
-    for (let slot = 0; slot < maxSlots; slot += 1) {
+function buildSummaryRows(bundle: RawShotBundleView, t: TLike): BundleSummaryRow[] {
+  const packets = bundle.packets.map((x) => x.packet)
+  const uniqueHeaders = Array.from(new Set(packets.map((p) => p.header)))
+    .sort((a, b) => a - b)
+    .map((h) => toHexByte(h))
+    .join(' ')
+
+  const a0Packets = packets.filter((p) => p.header === HEADER_ATTACH)
+  const a0Last = a0Packets[a0Packets.length - 1] ?? null
+  const launchA0 = a0Packets.find((p) => (p.bytes[3] ?? 0) === 0x00) ?? null
+  const attachedA0 = a0Packets.find((p) => (p.bytes[3] ?? 0) === 0x04) ?? null
+
+  const bPackets: Array<BbpPacket | null> = []
+  for (let h = HEADER_LIST_FIRST; h <= HEADER_LIST_LAST; h += 1) {
+    bPackets.push(findPacket(packets, h))
+  }
+  const b6 = findPacket(packets, HEADER_LIST_LAST)
+  const b7 = findPacket(packets, HEADER_CHECKSUM)
+  const hasB0ToB6 = bPackets.every((p) => p !== null)
+  const flatHistory: number[] = []
+  for (let i = 0; i < bPackets.length; i += 1) {
+    const p = bPackets[i]
+    if (!p) continue
+    const slotCount = i === 6 ? 2 : 8
+    for (let slot = 0; slot < slotCount; slot += 1) {
       const off = 1 + slot * 2
-      const sp = readU16LE(b, off)
-      lines.push(t('rawlog.decode.listLine', { index: base + slot, sp, offStart: off, offEnd: off + 1 }))
+      flatHistory.push(readU16LE(p.bytes, off))
     }
-    if (h === HEADER_LIST_LAST) {
-      lines.push(t('rawlog.decode.b6MaxSp', { value: readU16LE(b, 7) }))
-      lines.push(t('rawlog.decode.b6ShotCount', { value: readU16LE(b, 9) }))
-      lines.push(t('rawlog.decode.b6ListCount', { value: b[11] ?? 0 }))
-    }
-    return lines
   }
 
-  if (h === HEADER_CHECKSUM) {
-    const checksum = b[16] ?? 0
+  const profile = collectProfileMetrics(packets)
+
+  let checksumText = t('common.none')
+  let checksumCalculated = t('common.none')
+  if (b7) {
+    const checksum = b7.bytes[16] ?? 0
     let sum = 0
     let complete = true
-    for (let hh = HEADER_LIST_FIRST; hh <= HEADER_LIST_LAST; hh += 1) {
-      const src = contextMap.get(hh)
-      if (!src) {
+    for (let h = HEADER_LIST_FIRST; h <= HEADER_LIST_LAST; h += 1) {
+      const p = findPacket(packets, h)
+      if (!p) {
         complete = false
         continue
       }
-      for (let i = 1; i < src.bytes.length; i += 1) {
-        sum += src.bytes[i]
-      }
+      for (let i = 1; i < p.bytes.length; i += 1) sum += p.bytes[i]
     }
     const sum8 = sum & 0xff
-    return [
-      t('rawlog.decode.checksumTitle', { header: toHexByte(h) }),
-      t('rawlog.decode.checksumByte', { value: checksum }),
-      complete
-        ? t('rawlog.decode.checksumCompare', {
-          value: sum8,
-          result: sum8 === checksum ? t('rawlog.decode.match') : t('rawlog.decode.mismatch'),
-        })
-        : t('rawlog.decode.checksumMissing'),
-      t('rawlog.decode.checksumRule'),
-    ]
+    checksumCalculated = complete ? `${sum8}` : t('common.none')
+    checksumText = complete
+      ? `${checksum} (${sum8 === checksum ? t('rawlog.decode.match') : t('rawlog.decode.mismatch')})`
+      : `${checksum} (${t('rawlog.decode.checksumMissing')})`
   }
 
-  return [t('rawlog.decode.unknownHeader', { header: toHexByte(h) })]
+  const latestListIndex = b6 ? (b6.bytes[11] ?? 0) : 0
+  const latestRingIndex = latestListIndex > 0 ? ((latestListIndex - 1) % 50) : -1
+  const latestListSp =
+    latestRingIndex >= 0 && latestRingIndex < flatHistory.length
+      ? flatHistory[latestRingIndex]
+      : null
+  const latestHeader =
+    latestRingIndex >= 0
+      ? HEADER_LIST_FIRST + Math.floor(latestRingIndex / 8)
+      : null
+  const latestOffset =
+    latestRingIndex >= 0
+      ? 1 + (latestRingIndex % 8) * 2
+      : null
+
+  const a0Uid = a0Last
+    ? Array.from(a0Last.bytes.slice(11, 17))
+      .map((v) => v.toString(16).toUpperCase().padStart(2, '0'))
+      .join(' ')
+    : null
+
+  const rows: BundleSummaryRow[] = [
+    { label: t('rawlog.summary.headers'), value: uniqueHeaders || t('common.none') },
+    {
+      label: t('rawlog.summary.a0Offset1'),
+      value: a0Last ? `${a0Last.bytes[1] ?? 0} (${toHexByte(a0Last.bytes[1] ?? 0)})` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.attachState'),
+      value:
+        a0Last === null
+          ? t('common.none')
+          : `${toHexByte(a0Last.bytes[3] ?? 0)} (${getA0StateText(a0Last.bytes[3] ?? 0, t)})`,
+    },
+    {
+      label: t('rawlog.summary.a0Offset4'),
+      value: a0Last ? `${a0Last.bytes[4] ?? 0}` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.a0MaxSp'),
+      value: a0Last ? `${readU16LE(a0Last.bytes, 7)} rpm` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.a0TotalShots'),
+      value: a0Last ? `${readU16LE(a0Last.bytes, 9)}` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.a0Uid'),
+      value: a0Uid ?? t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.attachEventAt'),
+      value: attachedA0 ? formatTimestamp(attachedA0.timestamp) : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.launchEventAt'),
+      value: launchA0 ? formatTimestamp(launchA0.timestamp) : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.profilePoints'),
+      value: profile.points > 0 ? `${profile.points}` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.profilePacketCount'),
+      value: `${packets.filter((p) => p.header >= HEADER_PROF_FIRST && p.header <= HEADER_PROF_LAST).length}/4`,
+    },
+    {
+      label: t('rawlog.summary.profilePeak'),
+      value:
+        profile.peakSp !== null && profile.tPeakMs !== null
+          ? `${profile.peakSp} rpm @ ${profile.tPeakMs.toFixed(2)} ms`
+          : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.profileDuration'),
+      value: profile.totalMs !== null ? `${profile.totalMs.toFixed(2)} ms` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.b6MaxSp'),
+      value: b6 ? `${readU16LE(b6.bytes, 7)} rpm` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.b6ShotCount'),
+      value: b6 ? `${readU16LE(b6.bytes, 9)}` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.b6ListCount'),
+      value: b6 ? `${b6.bytes[11] ?? 0}` : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.bHistoryPackets'),
+      value: `${packets.filter((p) => p.header >= HEADER_LIST_FIRST && p.header <= HEADER_LIST_LAST).length}/7`,
+    },
+    {
+      label: t('rawlog.summary.bHistoryCount'),
+      value: `${flatHistory.length}/50`,
+    },
+    {
+      label: t('rawlog.summary.latestSpFromRing'),
+      value:
+        latestListSp !== null
+          ? `${latestListSp} rpm (n=${latestListIndex})`
+          : t('common.none'),
+    },
+    {
+      label: t('rawlog.summary.latestSpPosition'),
+      value:
+        latestHeader !== null && latestOffset !== null
+          ? `${toHexByte(latestHeader)} Off${latestOffset}-${latestOffset + 1}`
+          : t('common.none'),
+    },
+    { label: t('rawlog.summary.checksum'), value: checksumText },
+    { label: t('rawlog.summary.checksumCalc'), value: checksumCalculated },
+    {
+      label: t('rawlog.summary.b0ToB6Complete'),
+      value: hasB0ToB6 ? t('rawlog.decode.match') : t('rawlog.decode.mismatch'),
+    },
+  ]
+
+  return rows
 }
 
 export function RawLogPage() {
   const { t } = useTranslation()
-  const bleRef = useRef(new BleService())
+  const bleRef = useRef(getBleService())
   const [state, setState] = useState<RawLogState>({
     connected: false,
     connecting: false,
     disconnecting: false,
     attached: false,
     error: null,
-    packets: [],
+    packets: getRawPackets(),
   })
 
   useEffect(() => {
     const ble = bleRef.current
+    const unsubscribe = subscribeRawPackets(() => {
+      setState((prev) => ({ ...prev, packets: getRawPackets() }))
+    })
     ble.setHandlers({
       onState: (s) => {
         setState((prev) => ({
@@ -175,10 +327,7 @@ export function RawLogPage() {
         }))
       },
       onRaw: (packet) => {
-        setState((prev) => ({
-          ...prev,
-          packets: [packet, ...prev.packets],
-        }))
+        pushRawPacket(packet)
       },
       onError: (err: ProtocolError) => {
         const msg = err.detail ? `${err.message}: ${err.detail}` : err.message
@@ -186,7 +335,7 @@ export function RawLogPage() {
       },
     })
     return () => {
-      ble.disconnect()
+      unsubscribe()
     }
   }, [])
 
@@ -219,7 +368,7 @@ export function RawLogPage() {
   }
 
   function clearLogs() {
-    setState((prev) => ({ ...prev, packets: [] }))
+    clearRawPackets()
   }
 
   const shotBundles = useMemo(() => {
@@ -231,7 +380,6 @@ export function RawLogPage() {
 
     for (let i = 0; i < chronological.length; i += 1) {
       const p = chronological[i]
-      const decoded = decodePacket(p, buildContextMap(chronological, i), t)
 
       if (!current) {
         current = {
@@ -243,7 +391,7 @@ export function RawLogPage() {
         }
       }
 
-      current.packets.push({ packet: p, decoded })
+      current.packets.push({ packet: p })
       current.tEnd = p.timestamp
 
       if (p.header === HEADER_PROF_LAST) {
@@ -259,7 +407,7 @@ export function RawLogPage() {
     }
 
     return bundles.reverse()
-  }, [state.packets, t])
+  }, [state.packets])
 
   return (
     <main className="layout app-mobile app-compact neon-theme rawlog-page">
@@ -281,7 +429,9 @@ export function RawLogPage() {
                   : t('common.connect')}
           </button>
           <button className="mini-btn subtle" type="button" onClick={clearLogs}>{t('rawlog.clear')}</button>
-          <a className="mini-btn subtle" href="./">{t('rawlog.back')}</a>
+          <button type="button" className="mini-btn subtle" onClick={() => navigateTo('./')}>
+            {t('rawlog.back')}
+          </button>
         </div>
         <section className="rawlog-status">
           <div>{t('rawlog.connected')}: {state.connected ? t('rawlog.on') : t('rawlog.off')}</div>
@@ -303,21 +453,33 @@ export function RawLogPage() {
                 <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
                 <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
               </summary>
-              {bundle.packets.map(({ packet: p, decoded }, idx) => (
-                <div className="rawlog-row" key={`${bundle.id}-${p.timestamp}-${idx}`}>
-                  <div className="rawlog-meta">
-                    <span>{formatTimestamp(p.timestamp)}</span>
-                    <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
-                    <span>{`len=${p.length}`}</span>
-                  </div>
-                  <code>{p.hex}</code>
-                  <div className="rawlog-decoded">
-                    {decoded.map((line, i) => (
-                      <div key={`${bundle.id}-${p.timestamp}-${idx}-${i}`}>{line}</div>
-                    ))}
-                  </div>
+              <div className="rawlog-bundle-body">
+                <div className="rawlog-packets-compact">
+                  {bundle.packets.map(({ packet: p }, idx) => (
+                    <div className="rawlog-row compact" key={`${bundle.id}-${p.timestamp}-${idx}`}>
+                      <div className="rawlog-meta">
+                        <span>{formatTimestamp(p.timestamp)}</span>
+                        <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
+                        <span>{`len=${p.length}`}</span>
+                      </div>
+                      <code>{p.hex}</code>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                <div className="rawlog-summary-table-wrap">
+                  <div className="rawlog-summary-title">{t('rawlog.summary.title')}</div>
+                  <table className="rawlog-summary-table">
+                    <tbody>
+                      {buildSummaryRows(bundle, t).map((row) => (
+                        <tr key={`${bundle.id}-${row.label}`}>
+                          <th>{row.label}</th>
+                          <td>{row.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </details>
           ))}
         </div>

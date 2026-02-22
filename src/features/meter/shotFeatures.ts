@@ -2,7 +2,15 @@ import type { ShotProfile } from '../ble/bbpTypes'
 import { findFirstPeakIndex } from '../../analysis/firstPeak'
 
 export interface ShotFeatures {
+  best_sp: number
+  t_release: number
   t_peak: number
+  peak_progress: number
+  peak_hold_turns: number
+  accel_ratio: number
+  early_drop_index: number
+  smoothness_index: number
+  shot_profile_type: string
   first_peak_sp: number
   second_peak_sp: number | null
   second_peak_t: number | null
@@ -19,6 +27,9 @@ export interface ShotFeatures {
   peak_input_time: number
   input_stability: number
 }
+
+export type AccelTrend = 'front' | 'steady' | 'late'
+export type DropRisk = 'low' | 'medium' | 'high'
 
 function safeDiv(a: number, b: number): number {
   return b === 0 ? 0 : a / b
@@ -52,10 +63,38 @@ function toRelativeTimeMs(tMs: number[], sp: number[], nRefs: number[]): number[
   return tMs.map((t) => t - t0)
 }
 
+export function getAccelTrend(accelRatio: number): AccelTrend {
+  if (!Number.isFinite(accelRatio)) return 'steady'
+  if (accelRatio >= 1.25) return 'front'
+  if (accelRatio <= 0.8) return 'late'
+  return 'steady'
+}
+
+export function getDropRisk(earlyDropIndex: number): DropRisk {
+  if (!Number.isFinite(earlyDropIndex)) return 'medium'
+  if (earlyDropIndex >= 0.3) return 'high'
+  if (earlyDropIndex >= 0.16) return 'medium'
+  return 'low'
+}
+
+function getShotProfileType(accelRatio: number, earlyDropIndex: number): string {
+  const trend = getAccelTrend(accelRatio)
+  const risk = getDropRisk(earlyDropIndex)
+  return `${trend}_${risk}`
+}
+
 export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
   if (!profile || profile.sp.length === 0) {
     return {
+      best_sp: 0,
       t_peak: 0,
+      t_release: 0,
+      peak_progress: 0,
+      peak_hold_turns: 0,
+      accel_ratio: 0,
+      early_drop_index: 0,
+      smoothness_index: 0,
+      shot_profile_type: 'steady',
       first_peak_sp: 0,
       second_peak_sp: null,
       second_peak_t: null,
@@ -88,8 +127,24 @@ export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
   }
   const secondPeakIndex = localPeakIndexes.length > 0 ? localPeakIndexes[0] : null
   const firstPeakSp = sp[firstPeakIndex] ?? 0
+  const best_sp = firstPeakSp
   const t_peak = relTMs[firstPeakIndex] ?? 0
+  const t_release = relTMs[relTMs.length - 1] ?? 0
+  const peak_progress = safeDiv(t_peak, t_release)
   const peak = firstPeakSp
+
+  const holdThreshold = peak * 0.98
+  let holdStart = firstPeakIndex
+  let holdEnd = firstPeakIndex
+  for (let i = firstPeakIndex; i >= 0; i -= 1) {
+    if ((sp[i] ?? 0) >= holdThreshold) holdStart = i
+    else break
+  }
+  for (let i = firstPeakIndex; i < sp.length; i += 1) {
+    if ((sp[i] ?? 0) >= holdThreshold) holdEnd = i
+    else break
+  }
+  const peak_hold_turns = Math.max(1, holdEnd - holdStart + 1)
 
   const t50Threshold = peak * 0.5
   const t90Threshold = peak * 0.9
@@ -189,8 +244,41 @@ export function computeShotFeatures(profile: ShotProfile | null): ShotFeatures {
     : 0
   const input_stability = safeDiv(accelStd, accelMean)
 
+  const halfTime = t_release * 0.5
+  let firstHalfInput = 0
+  let secondHalfInput = 0
+  for (let i = 0; i < accel.length; i += 1) {
+    if ((accelTime[i] ?? 0) <= halfTime) {
+      firstHalfInput += accel[i]
+    } else {
+      secondHalfInput += accel[i]
+    }
+  }
+  const accel_ratio = safeDiv(firstHalfInput + 1e-9, secondHalfInput + 1e-9)
+
+  const earlyDropWindowMs = Math.min(t_release, t_peak + 80)
+  let minAfterPeak = peak
+  for (let i = firstPeakIndex; i < sp.length; i += 1) {
+    if ((relTMs[i] ?? t_release) > earlyDropWindowMs) break
+    minAfterPeak = Math.min(minAfterPeak, sp[i] ?? minAfterPeak)
+  }
+  const early_drop_index = safeDiv(peak - minAfterPeak, Math.max(1, peak))
+
+  const roughnessNorm = safeDiv(smoothness, Math.max(1, peak / 20))
+  const smoothness_index = Math.max(0, Math.min(100, 100 / (1 + roughnessNorm)))
+
+  const shot_profile_type = getShotProfileType(accel_ratio, early_drop_index)
+
   return {
+    best_sp: Number(best_sp.toFixed(2)),
     t_peak,
+    t_release: Number(t_release.toFixed(2)),
+    peak_progress: Number(peak_progress.toFixed(4)),
+    peak_hold_turns,
+    accel_ratio: Number(accel_ratio.toFixed(4)),
+    early_drop_index: Number(early_drop_index.toFixed(4)),
+    smoothness_index: Number(smoothness_index.toFixed(2)),
+    shot_profile_type,
     first_peak_sp: Number(firstPeakSp.toFixed(2)),
     second_peak_sp: secondPeakIndex !== null ? Number((sp[secondPeakIndex] ?? 0).toFixed(2)) : null,
     second_peak_t: secondPeakIndex !== null ? Number((relTMs[secondPeakIndex] ?? 0).toFixed(2)) : null,

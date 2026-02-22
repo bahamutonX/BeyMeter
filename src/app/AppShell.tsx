@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BleService } from '../features/ble/BleService'
 import type { ProtocolError, ShotProfile, ShotSnapshot } from '../features/ble/bbpTypes'
 import { ShotStore, type MeterViewState } from '../features/meter/ShotStore'
 import { Header } from '../ui/Header'
@@ -8,22 +7,24 @@ import { ProfileChart } from '../ui/ProfileChart'
 import { BandChart } from '../ui/BandChart'
 import { NeonPanel } from '../ui/NeonPanel'
 import { SectionHeader } from '../ui/SectionHeader'
-import { SegmentedToggle } from '../ui/SegmentedToggle'
-import { MetricLabel } from '../ui/MetricLabel'
 import { isCapacitorNativeEnvironment } from '../features/ble/bleEnvironment'
-import { computeShotFeatures, type ShotFeatures } from '../features/meter/shotFeatures'
+import {
+  computeShotFeatures,
+  type ShotFeatures,
+} from '../features/meter/shotFeatures'
 import { clearShots, listShots, saveShot, type PersistentShot } from '../features/meter/shotStorage'
 import { BAND_DEFS, buildBandStats } from '../features/meter/statsBands'
+import { computeLauncherEfficiency, LAUNCHER_SPECS, type LauncherEfficiency } from '../features/meter/launcherEfficiency'
 import { detectDecaySegment } from '../analysis/decayDetect'
 import { fitFriction } from '../analysis/frictionFit'
 import { computeTorque } from '../analysis/torque'
 import { findFirstPeakIndex } from '../analysis/firstPeak'
-import { METRIC_LABELS } from '../ui/metricLabels'
 import { aggregateSeries } from '../analysis/aggregateSeries'
+import { getBleService } from '../features/ble/bleSingleton'
+import { pushRawPacket } from '../features/ble/rawPacketStore'
+import { navigateTo } from './navigation'
 import {
-  classifyShootType,
   LAUNCHER_OPTIONS,
-  type ShootType,
   type LauncherType,
 } from '../features/meter/shootType'
 
@@ -32,7 +33,6 @@ const RECENT_Y_MAX_SP = 12000
 const LAUNCHER_TYPE_KEY = 'beymeter.launcherType'
 const NATIVE_CONNECT_TIMEOUT_MS = 15000
 
-type ChartMode = 'avg' | 'overlay'
 type ConnectOverlayState = 'hidden' | 'connecting' | 'success' | 'error'
 
 interface BleUiState {
@@ -50,6 +50,14 @@ function getInitialLauncherType(): LauncherType {
     return saved
   }
   return 'string'
+}
+
+function classifyThreeShotType(features: ShotFeatures | null | undefined): 'front' | 'constant' | 'back' {
+  const ratio = features?.accel_ratio
+  if (!Number.isFinite(ratio)) return 'constant'
+  if ((ratio ?? 1) >= 1.15) return 'front'
+  if ((ratio ?? 1) <= 0.9) return 'back'
+  return 'constant'
 }
 
 function ensureProfile(profile: ShotProfile): ShotProfile {
@@ -146,25 +154,10 @@ function mean(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2
-  }
-  return sorted[mid]
-}
-
 function stddev(values: number[]): number {
   if (values.length === 0) return 0
   const m = mean(values)
   return Math.sqrt(mean(values.map((x) => (x - m) ** 2)))
-}
-
-function formatMaybe(value: number, hasData: boolean, digits = 2): string {
-  if (!hasData) return '—'
-  return Number(value.toFixed(digits)).toString()
 }
 
 function toLocalizedErrorMessage(t: (key: string) => string, message: string): string {
@@ -187,22 +180,9 @@ function toLocalizedErrorMessage(t: (key: string) => string, message: string): s
   return message
 }
 
-function summarizeFeature(
-  shots: PersistentShot[],
-  key: keyof ShotFeatures,
-): { mean: number; p50: number } {
-  const values = shots
-    .map((s) => s.features?.[key])
-    .filter((x): x is number => Number.isFinite(x))
-  return {
-    mean: Number(mean(values).toFixed(3)),
-    p50: Number(median(values).toFixed(3)),
-  }
-}
-
 export function AppShell() {
   const { t } = useTranslation()
-  const bleRef = useRef(new BleService())
+  const bleRef = useRef(getBleService())
   const storeRef = useRef(new ShotStore())
 
   const [bleUi, setBleUi] = useState<BleUiState>({
@@ -219,7 +199,6 @@ export function AppShell() {
   const launcherTypeRef = useRef(launcherType)
 
   const [selectedBandId, setSelectedBandId] = useState(BAND_DEFS[0].id)
-  const [bandChartMode, setBandChartMode] = useState<ChartMode>('avg')
   const [isMobileLayout, setIsMobileLayout] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
   )
@@ -365,7 +344,7 @@ export function AppShell() {
         setViewState(storeRef.current.setError(error))
       },
       onRaw: (packet) => {
-        void packet
+        pushRawPacket(packet)
       },
     })
     void (async () => {
@@ -391,9 +370,7 @@ export function AppShell() {
       setViewState(storeRef.current.hydrateHistory(recalculated.map(toSnapshot)))
     })()
 
-    return () => {
-      ble.disconnect()
-    }
+    return () => {}
   }, [t])
 
   useEffect(() => {
@@ -430,20 +407,24 @@ export function AppShell() {
     () => (latest ? persistedShots.find((s) => s.createdAt === latest.receivedAt) ?? null : null),
     [latest, persistedShots],
   )
-  const latestShootTypeKey = useMemo(
-    () => classifyShootType(latestPersisted?.features),
-    [latestPersisted?.features],
-  )
-  const shootTypeLabel = useCallback((key: ShootType): string => t(`shootType.${key}`), [t])
-  const launcherLabel = useCallback((type: LauncherType): string => t(`launcher.${type}`), [t])
   const launcherOptions = useMemo(
     () => LAUNCHER_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) })),
     [t],
   )
-  const latestLauncherText = useMemo(
-    () => launcherLabel((latestPersisted?.launcherType ?? launcherType) as LauncherType),
-    [latestPersisted?.launcherType, launcherType, launcherLabel],
+  const latestFeatures = useMemo(
+    () => latestPersisted?.features ?? (latestProfile ? computeShotFeatures(latestProfile) : null),
+    [latestPersisted?.features, latestProfile],
   )
+  const latestLauncherType = (latestPersisted?.launcherType ?? launcherType) as LauncherType
+  const latestEfficiency = useMemo(
+    () => computeLauncherEfficiency(latestProfile, latestLauncherType),
+    [latestProfile, latestLauncherType],
+  )
+  const latestShootType3 = useMemo(() => classifyThreeShotType(latestFeatures), [latestFeatures])
+  const latestSpPeakValue = useMemo(() => {
+    if (!latestProfile || latestProfile.sp.length === 0) return latest?.maxSp ?? null
+    return Math.round(latestProfile.sp[Math.max(0, Math.min(peakIndex, latestProfile.sp.length - 1))] ?? latest?.maxSp ?? 0)
+  }, [latestProfile, latest, peakIndex])
   const latestTorqueSeries = latestPersisted?.torqueSeries ?? null
   const latestFallbackTorqueSeries = useMemo(
     () => (latestProfile ? computeTorque(latestProfile, null, null).torqueSeries : null),
@@ -481,40 +462,32 @@ export function AppShell() {
     return maxIdx
   }, [latestVisibleTorqueSeries])
   const latestTorquePeakTimeMs = useMemo(() => {
-    if (!latestVisibleTorqueSeries || latestVisibleTorqueSeries.tMs.length === 0) return null
-    let maxVal = Number.NEGATIVE_INFINITY
+    if (!latestTorqueProfile || latestTorqueProfile.tMs.length === 0) return null
     let maxIdx = 0
-    for (let i = 0; i < latestVisibleTorqueSeries.tau.length; i += 1) {
-      const v = latestVisibleTorqueSeries.tau[i] ?? Number.NEGATIVE_INFINITY
+    let maxVal = Number.NEGATIVE_INFINITY
+    for (let i = 0; i < latestTorqueProfile.sp.length; i += 1) {
+      const t = latestTorqueProfile.tMs[i] ?? Number.POSITIVE_INFINITY
+      if (t > RECENT_X_MAX_MS) continue
+      const v = latestTorqueProfile.sp[i] ?? Number.NEGATIVE_INFINITY
       if (v > maxVal) {
         maxVal = v
         maxIdx = i
       }
     }
-    return Math.max(0, Number((latestVisibleTorqueSeries.tMs[maxIdx] ?? 0).toFixed(2)))
-  }, [latestVisibleTorqueSeries])
+    if (!Number.isFinite(maxVal)) return null
+    return getStartAlignedPeakTimeMs(latestTorqueProfile, maxIdx)
+  }, [latestTorqueProfile])
   const latestPeakTimeMs = useMemo(
     () => getStartAlignedPeakTimeMs(latestProfile, peakIndex),
     [latestProfile, peakIndex],
   )
-  const latestLaunchMarkerMs = latest?.launchMarkerMs ?? null
-  const latestMaxSpText = useMemo(
-    () => (latest ? `${latest.maxSp} rpm` : t('common.none')),
-    [latest, t],
-  )
   const latestMaxTorqueText = useMemo(() => {
     if (!latestVisibleTorqueSeries || latestVisibleTorqueSeries.tau.length === 0) return t('common.none')
-    const maxVal = Math.max(...latestVisibleTorqueSeries.tau)
+    const values = latestVisibleTorqueSeries.tau.filter((_, i) => (latestVisibleTorqueSeries.tMs[i] ?? Number.POSITIVE_INFINITY) <= RECENT_X_MAX_MS)
+    if (values.length === 0) return t('common.none')
+    const maxVal = Math.max(...values)
     return `${Number(maxVal.toFixed(3))} rpm/ms`
   }, [latestVisibleTorqueSeries, t])
-  const latestPersonalBest = useMemo(() => {
-    if (!latestPersisted) return false
-    const prevBest = persistedShots
-      .filter((shot) => shot.id !== latestPersisted.id)
-      .reduce((acc, shot) => Math.max(acc, shot.yourSp), 0)
-    return latestPersisted.yourSp > prevBest
-  }, [latestPersisted, persistedShots])
-
   const yourScores = useMemo(() => persistedShots.map((s) => s.yourSp), [persistedShots])
   const historySummary = useMemo(
     () => ({
@@ -537,40 +510,73 @@ export function AppShell() {
       return true
     })
   }, [persistedShots, selectedBandId])
-  const selectedBandMaxTau = useMemo(() => {
+  const selectedBandAucToPeakMean = useMemo(() => {
     const values = selectedBandShots
-      .map((s) => s.torqueFeatures?.maxInputTau ?? s.torqueFeatures?.maxTau)
-      .filter((x): x is number => x !== undefined)
-    return Number(mean(values).toFixed(6))
+      .map((s) => s.features?.auc_0_peak)
+      .filter((x): x is number => Number.isFinite(x))
+    return values.length > 0 ? Number(mean(values).toFixed(2)) : null
   }, [selectedBandShots])
-  const launcherCountByType = useMemo(() => {
-    return LAUNCHER_OPTIONS.map((opt) => {
-      const count = selectedBandShots.filter((s) => (s.launcherType ?? 'string') === opt.value).length
-      return { ...opt, count }
-    })
+  const selectedBandAccelRatioMean = useMemo(() => {
+    const values = selectedBandShots
+      .map((s) => s.features?.accel_ratio)
+      .filter((x): x is number => Number.isFinite(x))
+    return values.length > 0 ? Number(mean(values).toFixed(3)) : null
   }, [selectedBandShots])
-  const selectedBandShootType = useMemo(() => {
-    const buckets = new Map<string, number>()
-    for (const shot of selectedBandShots) {
-      const type = classifyShootType(shot.features)
-      buckets.set(type, (buckets.get(type) ?? 0) + 1)
+  const selectedBandTorquePeakPosition = useMemo(() => {
+    const values = selectedBandShots
+      .map((s) => {
+        const tPeak = s.features?.t_peak ?? 0
+        const tTau = s.features?.peak_input_time ?? 0
+        if (!Number.isFinite(tPeak) || tPeak <= 0 || !Number.isFinite(tTau)) return null
+        return Math.max(0, Math.min(100, (tTau / tPeak) * 100))
+      })
+      .filter((x): x is number => x !== null)
+    if (values.length === 0) return null
+    return Number(mean(values).toFixed(1))
+  }, [selectedBandShots])
+  const selectedBandShootType3 = useMemo(
+    () => t(`shootType3.${classifyThreeShotType({ accel_ratio: selectedBandAccelRatioMean ?? 1 } as ShotFeatures)}`),
+    [selectedBandAccelRatioMean, t],
+  )
+  const selectedBandEfficiencyByLauncher = useMemo(() => {
+    const result: Record<LauncherType, { count: number; meanPercent: number | null; sdPercent: number | null; meanLengthCm: number | null; totalLengthCm: number }> = {
+      string: { count: 0, meanPercent: null, sdPercent: null, meanLengthCm: null, totalLengthCm: LAUNCHER_SPECS.string.lengthCm },
+      winder: { count: 0, meanPercent: null, sdPercent: null, meanLengthCm: null, totalLengthCm: LAUNCHER_SPECS.winder.lengthCm },
+      longWinder: { count: 0, meanPercent: null, sdPercent: null, meanLengthCm: null, totalLengthCm: LAUNCHER_SPECS.longWinder.lengthCm },
     }
-    if (buckets.size === 0) return t('common.none')
-    return shootTypeLabel([...buckets.entries()].sort((a, b) => b[1] - a[1])[0][0] as ShootType)
-  }, [selectedBandShots, shootTypeLabel, t])
-  const selectedBandShootFeatures = useMemo(() => {
-    return {
-      t50: summarizeFeature(selectedBandShots, 't_50'),
-      tPeak: summarizeFeature(selectedBandShots, 't_peak'),
-      slopeMax: summarizeFeature(selectedBandShots, 'slope_max'),
-      auc0Peak: summarizeFeature(selectedBandShots, 'auc_0_peak'),
-      spikeScore: summarizeFeature(selectedBandShots, 'spike_score'),
-      earlyInputRatio: summarizeFeature(selectedBandShots, 'early_input_ratio'),
-      lateInputRatio: summarizeFeature(selectedBandShots, 'late_input_ratio'),
-      peakInputTime: summarizeFeature(selectedBandShots, 'peak_input_time'),
-      inputStability: summarizeFeature(selectedBandShots, 'input_stability'),
+    for (const launcher of LAUNCHER_OPTIONS.map((o) => o.value)) {
+      const efficiencies = selectedBandShots
+        .filter((s) => (s.launcherType ?? 'string') === launcher)
+        .map((s) => computeLauncherEfficiency(s.profile, launcher))
+        .filter((x): x is LauncherEfficiency => x !== null)
+      result[launcher].count = efficiencies.length
+      if (efficiencies.length > 0) {
+        const percents = efficiencies.map((x) => x.effPercent)
+        const lengths = efficiencies.map((x) => x.effLengthCm)
+        result[launcher].meanPercent = Number(mean(percents).toFixed(1))
+        result[launcher].sdPercent = Number(stddev(percents).toFixed(1))
+        result[launcher].meanLengthCm = Number(mean(lengths).toFixed(1))
+      }
     }
+    return result
   }, [selectedBandShots])
+  const selectedBandLauncherEfficiencies = useMemo(() => {
+    return selectedBandShots
+      .filter((s) => (s.launcherType ?? 'string') === launcherType)
+      .map((s) => computeLauncherEfficiency(s.profile, launcherType))
+      .filter((x): x is LauncherEfficiency => x !== null)
+  }, [selectedBandShots, launcherType])
+  const selectedBandEffectiveLengthSummary = useMemo(() => {
+    if (selectedBandLauncherEfficiencies.length === 0) return null
+    const lengthCm = LAUNCHER_SPECS[launcherType].lengthCm
+    const effLengthCm = Number(
+      mean(selectedBandLauncherEfficiencies.map((x) => x.effLengthCm)).toFixed(1),
+    )
+    const effPercent = Number(
+      mean(selectedBandLauncherEfficiencies.map((x) => x.effPercent)).toFixed(0),
+    )
+    return { effLengthCm, lengthCm, effPercent }
+  }, [selectedBandLauncherEfficiencies, launcherType])
 
   const selectedBandStat = bandStats[selectedBandId]
   const hasSelectedBandData = (selectedBandStat?.count ?? 0) > 0
@@ -621,13 +627,6 @@ export function AppShell() {
     }
     if (!Number.isFinite(maxValue)) return null
     return { peakTimeMs: Math.round(peakTimeMs), maxValue: Number(maxValue.toFixed(3)) }
-  }, [selectedBandShots])
-  const selectedBandLaunchMarkerMs = useMemo(() => {
-    const vals = selectedBandShots
-      .map((s) => s.launchMarkerMs)
-      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
-    if (vals.length === 0) return null
-    return Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2))
   }, [selectedBandShots])
   const maxBandCount = useMemo(
     () => Math.max(1, ...BAND_DEFS.map((b) => bandStats[b.id]?.count ?? 0)),
@@ -791,17 +790,54 @@ export function AppShell() {
                 '--'
               )}
             </div>
-            <div className="card-help launcher-line">{t('launcher.label')}: {latest ? latestLauncherText : t('common.none')}</div>
-            <div className="shoot-type-label">
-              {t('shootType.label')}: {latest ? shootTypeLabel(latestShootTypeKey) : t('common.none')}
+            <div className="recent-analysis-block">
+              <div className="recent-analysis-group-title">{t('recent.shotPowerAnalysisTitle')}</div>
+              <div className="recent-analysis-row">
+                <span>{t('recent.peakShotPower')}</span>
+                <strong>
+                  {latest && latestSpPeakValue !== null
+                    ? `${latestPeakTimeMs}ms, ${latestSpPeakValue} rpm`
+                    : t('common.none')}
+                </strong>
+              </div>
+              <div className="recent-analysis-row">
+                <span>{t('recent.aucToPeak')}</span>
+                <strong>
+                  {latestFeatures
+                    ? Number((latestFeatures.auc_0_peak ?? 0).toFixed(2))
+                    : t('common.none')}
+                </strong>
+              </div>
+              <div className="recent-analysis-row">
+                <span>{t('recent.effectiveLength')}</span>
+                <strong>
+                  {latestEfficiency
+                    ? `${latestEfficiency.effLengthCm.toFixed(1)}cm / ${latestEfficiency.lengthCm.toFixed(1)}cm (${latestEfficiency.effPercent.toFixed(0)}%)`
+                    : t('common.none')}
+                </strong>
+              </div>
+              <div className="recent-analysis-group-title">{t('recent.torqueAnalysisTitle')}</div>
+              <div className="recent-analysis-row">
+                <span>{t('recent.peakInputTorque')}</span>
+                <strong>
+                  {latestTorquePeakTimeMs !== null
+                    ? `${latestTorquePeakTimeMs}ms, ${latestMaxTorqueText}`
+                    : t('common.none')}
+                </strong>
+              </div>
+              <div className="recent-analysis-row">
+                <span>{t('recent.torquePeakPosition')}</span>
+                <strong>
+                  {latestTorquePeakTimeMs !== null && latestPeakTimeMs > 0
+                    ? `${Number(((latestTorquePeakTimeMs / latestPeakTimeMs) * 100).toFixed(1))}%`
+                    : t('common.none')}
+                </strong>
+              </div>
+              <div className="recent-analysis-row emphasize">
+                <span>{t('recent.shootTypeResult')}</span>
+                <strong>{latest ? t(`shootType3.${latestShootType3}`) : t('common.none')}</strong>
+              </div>
             </div>
-            <div className="card-help recent-extra-line">
-              {t('recent.maxShotPower')}: {latestMaxSpText}
-            </div>
-            <div className="card-help recent-extra-line">
-              {t('recent.bbpTotalShots')}: {bleUi.bbpTotalShots ?? t('common.none')}
-            </div>
-            {latestPersonalBest ? <div className="best-badge">{t('recent.shotPowerUpdated')}</div> : null}
           </article>
         </NeonPanel>
 
@@ -825,7 +861,6 @@ export function AppShell() {
             <div className="shot-meta">
               <span>{t('recent.peakShotPower')}: {latest ? `${latestPeakTimeMs}ms / ${latest.maxSp} rpm` : t('common.none')}</span>
               <span>{t('recent.peakInputTorque')}: {latestTorquePeakTimeMs !== null ? `${latestTorquePeakTimeMs}ms / ${latestMaxTorqueText}` : t('common.none')}</span>
-              <span>{t('recent.launchPoint')}: {latestLaunchMarkerMs !== null ? `${Number(latestLaunchMarkerMs.toFixed(2))}ms` : t('common.none')}</span>
             </div>
           </div>
           {isMobileLayout && recentNotice ? <div className="mobile-recent-msg success">{recentNotice}</div> : null}
@@ -842,7 +877,6 @@ export function AppShell() {
             fixedPrimaryYMax={RECENT_Y_MAX_SP}
             fixedXTicks={[0, 100, 200, 300, 400]}
             fixedPrimaryYTicks={[0, 3000, 6000, 9000, 12000]}
-            launchMarkerMs={latestLaunchMarkerMs}
           />
         </NeonPanel>
       </div>
@@ -907,23 +941,11 @@ export function AppShell() {
             <div className="shot-meta">
               <span>{t('history.peakShotPowerAvg')}: {selectedBandSpMeta ? `${selectedBandSpMeta.peakTimeMs}ms / ${Math.round(selectedBandSpMeta.maxValue)} rpm` : t('common.none')}</span>
               <span>{t('history.peakInputTorqueAvg')}: {selectedBandTauMeta ? `${selectedBandTauMeta.peakTimeMs}ms / ${selectedBandTauMeta.maxValue} rpm/ms` : t('common.none')}</span>
-              <span>{t('history.launchPointAvg')}: {selectedBandLaunchMarkerMs !== null ? `${selectedBandLaunchMarkerMs}ms` : t('common.none')}</span>
             </div>
           </div>
-          <div className="segment-row">
-            <SegmentedToggle
-              value={bandChartMode}
-              onChange={setBandChartMode}
-              options={[
-                { value: 'avg', label: t('history.modeAvg') },
-                { value: 'overlay', label: t('history.modeOverlay') },
-              ]}
-            />
-          </div>
-
           <BandChart
             shots={selectedBandShots}
-            mode={bandChartMode}
+            mode="overlay"
             rangeStart={0}
             rangeEnd={RECENT_X_MAX_MS}
             fixedSpYMin={0}
@@ -934,16 +956,30 @@ export function AppShell() {
             spYLabel={t('labels.shotPowerRpm')}
             torqueYLabel={t('labels.inputTorque')}
             maxOverlay={20}
-            launchMarkerMsAvg={selectedBandLaunchMarkerMs}
           />
 
           <div className="stats-two-col">
             <div className="stats-col">
               <h4>{t('history.statsTitle')}</h4>
               <div>{t('history.total')}: {selectedBandShots.length}{t('labels.shots')}</div>
-              <div>・{t('launcher.string')}: {launcherCountByType.find((x) => x.value === 'string')?.count ?? 0}{t('labels.shots')}</div>
-              <div>・{t('launcher.winder')}: {launcherCountByType.find((x) => x.value === 'winder')?.count ?? 0}{t('labels.shots')}</div>
-              <div>・{t('launcher.longWinder')}: {launcherCountByType.find((x) => x.value === 'longWinder')?.count ?? 0}{t('labels.shots')}</div>
+              <div>
+                ・{t('launcher.string')}: {selectedBandEfficiencyByLauncher.string.count}{t('labels.shots')}
+                {selectedBandEfficiencyByLauncher.string.meanLengthCm !== null
+                  ? ` / ${selectedBandEfficiencyByLauncher.string.meanLengthCm.toFixed(1)}cm/${selectedBandEfficiencyByLauncher.string.totalLengthCm.toFixed(1)}cm (${selectedBandEfficiencyByLauncher.string.meanPercent?.toFixed(0)}%${selectedBandEfficiencyByLauncher.string.sdPercent !== null ? `, SD ${selectedBandEfficiencyByLauncher.string.sdPercent.toFixed(0)}%` : ''})`
+                  : ''}
+              </div>
+              <div>
+                ・{t('launcher.winder')}: {selectedBandEfficiencyByLauncher.winder.count}{t('labels.shots')}
+                {selectedBandEfficiencyByLauncher.winder.meanLengthCm !== null
+                  ? ` / ${selectedBandEfficiencyByLauncher.winder.meanLengthCm.toFixed(1)}cm/${selectedBandEfficiencyByLauncher.winder.totalLengthCm.toFixed(1)}cm (${selectedBandEfficiencyByLauncher.winder.meanPercent?.toFixed(0)}%${selectedBandEfficiencyByLauncher.winder.sdPercent !== null ? `, SD ${selectedBandEfficiencyByLauncher.winder.sdPercent.toFixed(0)}%` : ''})`
+                  : ''}
+              </div>
+              <div>
+                ・{t('launcher.longWinder')}: {selectedBandEfficiencyByLauncher.longWinder.count}{t('labels.shots')}
+                {selectedBandEfficiencyByLauncher.longWinder.meanLengthCm !== null
+                  ? ` / ${selectedBandEfficiencyByLauncher.longWinder.meanLengthCm.toFixed(1)}cm/${selectedBandEfficiencyByLauncher.longWinder.totalLengthCm.toFixed(1)}cm (${selectedBandEfficiencyByLauncher.longWinder.meanPercent?.toFixed(0)}%${selectedBandEfficiencyByLauncher.longWinder.sdPercent !== null ? `, SD ${selectedBandEfficiencyByLauncher.longWinder.sdPercent.toFixed(0)}%` : ''})`
+                  : ''}
+              </div>
               <div>{t('history.avg')}: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.mean}<span className="inline-unit"> {t('labels.rpm')}</span></> : t('common.none')}</div>
               <div>{t('history.max')}: {selectedBandStat && hasSelectedBandData ? <>{selectedBandStat.max}<span className="inline-unit"> {t('labels.rpm')}</span></> : t('common.none')}</div>
               <div>{t('history.stddev')}: {selectedBandStat && hasSelectedBandData ? selectedBandStat.stddev : t('common.none')}</div>
@@ -953,56 +989,39 @@ export function AppShell() {
               <h4>{t('history.detailTitle')}</h4>
               <div className="detail-grid">
                 <div className="detail-col">
-                  <h5>{t('history.shotFactors')}</h5>
+                  <h5>{t('history.shotPowerAnalysisTitle')}</h5>
                   <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.maxTau} />
-                    <strong>{hasSelectedBandData ? `${selectedBandMaxTau}` : '—'}</strong>
+                    <span>{t('history.peakShotPowerAvg')}</span>
+                    <strong>{selectedBandSpMeta ? `${selectedBandSpMeta.peakTimeMs}ms, ${Math.round(selectedBandSpMeta.maxValue)} rpm` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.t_50} />
-                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.t50.mean, hasSelectedBandData, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.t50.p50, hasSelectedBandData, 3)}ms` : t('common.none')}</strong>
+                    <span>{t('history.aucToPeakAvg')}</span>
+                    <strong>{selectedBandAucToPeakMean !== null ? selectedBandAucToPeakMean : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.t_peak} />
-                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.tPeak.mean, hasSelectedBandData, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.tPeak.p50, hasSelectedBandData, 3)}ms` : t('common.none')}</strong>
-                  </div>
-                  <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.slope_max} />
-                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.slopeMax.mean, hasSelectedBandData, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.slopeMax.p50, hasSelectedBandData, 3)}` : t('common.none')}</strong>
-                  </div>
-                  <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.auc_0_peak} />
-                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.auc0Peak.mean, hasSelectedBandData, 3)}SP / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.auc0Peak.p50, hasSelectedBandData, 3)}SP` : t('common.none')}</strong>
-                  </div>
-                  <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.spike_score} />
-                    <strong>{selectedBandStat ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.spikeScore.mean, hasSelectedBandData, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.spikeScore.p50, hasSelectedBandData, 3)}` : t('common.none')}</strong>
+                    <span>{t('history.effectiveLengthAvg')}</span>
+                    <strong>
+                      {selectedBandEffectiveLengthSummary
+                        ? `${selectedBandEffectiveLengthSummary.effLengthCm.toFixed(1)}cm / ${selectedBandEffectiveLengthSummary.lengthCm.toFixed(1)}cm (${selectedBandEffectiveLengthSummary.effPercent.toFixed(0)}%)`
+                        : t('common.none')}
+                    </strong>
                   </div>
                 </div>
 
                 <div className="detail-col">
-                  <h5>{t('shootType.judge')}</h5>
+                  <h5>{t('history.torqueAnalysisTitle')}</h5>
                   <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.early_input_ratio} />
-                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.earlyInputRatio.p50, true, 3)}` : t('common.none')}</strong>
+                    <span>{t('history.peakInputTorqueAvg')}</span>
+                    <strong>{selectedBandTauMeta ? `${selectedBandTauMeta.peakTimeMs}ms, ${selectedBandTauMeta.maxValue} rpm/ms` : t('common.none')}</strong>
                   </div>
                   <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.late_input_ratio} />
-                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.lateInputRatio.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.lateInputRatio.p50, true, 3)}` : t('common.none')}</strong>
+                    <span>{t('history.torquePeakPositionAvg')}</span>
+                    <strong>{selectedBandTorquePeakPosition !== null ? `${selectedBandTorquePeakPosition}%` : t('common.none')}</strong>
                   </div>
-                  <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.peak_input_time} />
-                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.peakInputTime.mean, true, 3)}ms / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.peakInputTime.p50, true, 3)}ms` : t('common.none')}</strong>
+                  <div className="compact-metric emphasize">
+                    <span>{t('recent.shootTypeResult')}</span>
+                    <strong>{selectedBandShots.length > 0 ? selectedBandShootType3 : t('common.none')}</strong>
                   </div>
-                  <div className="compact-metric">
-                    <MetricLabel help={METRIC_LABELS.input_stability} />
-                    <strong>{hasSelectedBandData ? `${t('common.mean')} ${formatMaybe(selectedBandShootFeatures.inputStability.mean, true, 3)} / ${t('common.median')} ${formatMaybe(selectedBandShootFeatures.inputStability.p50, true, 3)}` : t('common.none')}</strong>
-                  </div>
-                  <div className="compact-metric">
-                    <span>{t('launcher.selected')}</span>
-                    <strong>{launcherLabel(launcherType)}</strong>
-                  </div>
-                  <div className="judge-text">{t('shootType.judge')}: {selectedBandShootType}</div>
                 </div>
               </div>
             </div>
@@ -1051,7 +1070,6 @@ export function AppShell() {
                   ))}
                 </div>
               </div>
-
               <button
                 className="mobile-connect-btn"
                 onClick={bleUi.connected ? handleDisconnect : () => void handleConnect()}
@@ -1096,7 +1114,9 @@ export function AppShell() {
           ))}
         </div>
         <div className="mobile-page-hint">{t('mobile.swipeHint')}</div>
-        <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
+        <button type="button" className="rawlog-secret-link" onClick={() => navigateTo('./RawLog')}>
+          RawLog
+        </button>
         {connectOverlayState !== 'hidden' ? (
           <div className="connect-modal-overlay" role="dialog" aria-modal="true">
             <div className={`connect-modal-card ${connectOverlayState}`}>
@@ -1133,7 +1153,9 @@ export function AppShell() {
       {headerNode}
       {recentNode}
       {historyNode}
-      <a className="rawlog-secret-link" href="./RawLog">RawLog</a>
+      <button type="button" className="rawlog-secret-link" onClick={() => navigateTo('./RawLog')}>
+        RawLog
+      </button>
       {connectOverlayState !== 'hidden' ? (
         <div className="connect-modal-overlay" role="dialog" aria-modal="true">
           <div className={`connect-modal-card ${connectOverlayState}`}>

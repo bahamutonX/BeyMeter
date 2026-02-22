@@ -64,6 +64,14 @@ function findFirstPeakIndexSimple(tMs: number[], sp: number[]): number {
   return Math.max(0, sp.findIndex((x) => x === globalMax))
 }
 
+function getStartAlignedTimeMs(profile: ShotProfile, index: number): number {
+  if (profile.tMs.length === 0) return 0
+  const idx0 = profile.profilePoints.findIndex((p) => p.nRefs > 0 && p.sp > 0)
+  const t0 = idx0 >= 0 ? (profile.profilePoints[idx0]?.tMs ?? profile.tMs[0] ?? 0) : (profile.tMs[0] ?? 0)
+  const tp = profile.tMs[Math.max(0, Math.min(index, profile.tMs.length - 1))] ?? t0
+  return Math.max(0, tp - t0)
+}
+
 function computeProfile(bytesByHeader: Map<number, Uint8Array>, bbpSp: number): {
   maxSp: number
   estSp: number
@@ -188,6 +196,8 @@ function computeProfile(bytesByHeader: Map<number, Uint8Array>, bbpSp: number): 
 export class BbpProtocol {
   private bytesByHeader = new Map<number, Uint8Array>()
 
+  private packetTimeByHeader = new Map<number, number>()
+
   private expectedLength: number | null = null
 
   private lastLength: number | null = null
@@ -253,6 +263,7 @@ export class BbpProtocol {
     }
 
     this.bytesByHeader.set(packet.header, packet.bytes)
+    this.packetTimeByHeader.set(packet.header, packet.timestamp)
 
     const isTrigger = packet.header === HEADER_CHECKSUM || packet.header === HEADER_PROF_LAST
     if (!isTrigger) {
@@ -286,6 +297,7 @@ export class BbpProtocol {
 
   clearMap(): void {
     this.bytesByHeader.clear()
+    this.packetTimeByHeader.clear()
   }
 
   private hasAllRequiredHeaders(): boolean {
@@ -419,14 +431,48 @@ export class BbpProtocol {
     }
 
     const shotTimestamp = Date.now()
+    const tProfFirst = this.packetTimeByHeader.get(HEADER_PROF_FIRST) ?? shotTimestamp
+    const tProfLast = this.packetTimeByHeader.get(HEADER_PROF_LAST) ?? shotTimestamp
+
     const releaseDetected =
       this.lastReleaseEventAt !== null &&
       shotTimestamp - this.lastReleaseEventAt >= 0 &&
       shotTimestamp - this.lastReleaseEventAt <= A0_RELEASE_WINDOW_MS
-    const launchMarkerMs =
-      releaseDetected && profileResult.profile
-        ? profileResult.profile.tMs[findFirstPeakIndexSimple(profileResult.profile.tMs, profileResult.profile.sp)] ?? null
-        : null
+    let launchMarkerMs: number | null = null
+    if (releaseDetected && profileResult.profile && profileResult.profile.tMs.length > 0) {
+      const tEnd = profileResult.profile.tMs[profileResult.profile.tMs.length - 1] ?? 0
+      const releaseAt = this.lastReleaseEventAt as number
+      if (tProfLast > tProfFirst) {
+        const ratio = (releaseAt - tProfFirst) / (tProfLast - tProfFirst)
+        launchMarkerMs = Math.max(0, Math.min(tEnd, ratio * tEnd))
+      } else {
+        const shifted = tEnd + (releaseAt - tProfLast)
+        launchMarkerMs = Math.max(0, Math.min(tEnd, shifted))
+      }
+
+      // Fallback guard: if mapping is degenerate, use first local peak as approximate launch timing.
+      if (!Number.isFinite(launchMarkerMs)) {
+        launchMarkerMs = profileResult.profile.tMs[
+          findFirstPeakIndexSimple(profileResult.profile.tMs, profileResult.profile.sp)
+        ] ?? null
+      }
+    }
+    // In practice, A0 receive timing and 70-73 transfer timing can be shifted.
+    // Keep launch timing stable for users by anchoring to the first-peak timing
+    // when mapped value looks implausible.
+    if (profileResult.profile && profileResult.profile.tMs.length > 0) {
+      const firstPeakIdx = findFirstPeakIndexSimple(profileResult.profile.tMs, profileResult.profile.sp)
+      const firstPeakMs = getStartAlignedTimeMs(profileResult.profile, firstPeakIdx)
+      if (
+        launchMarkerMs === null ||
+        !Number.isFinite(launchMarkerMs) ||
+        launchMarkerMs < 0 ||
+        launchMarkerMs > 400 ||
+        Math.abs(launchMarkerMs - firstPeakMs) > 180
+      ) {
+        launchMarkerMs = firstPeakMs
+      }
+    }
 
     const snapshot = {
       yourSp,

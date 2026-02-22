@@ -2,7 +2,6 @@ import type { ShotProfile } from '../features/ble/bbpTypes'
 import type { FrictionFitResult } from './frictionFit'
 import type { DecaySegment } from './decayDetect'
 import { findFirstPeakIndex } from './firstPeak'
-import { derivativeCentral, smoothMovingAverage } from './signal'
 
 export interface TorqueSeries {
   tMs: number[]
@@ -17,44 +16,81 @@ export interface TorqueFeatures {
   tauPeakTime: number
 }
 
+function toStartRelativeProfile(profile: ShotProfile): { t: number[]; sp: number[] } {
+  const n = Math.min(profile.tMs.length, profile.sp.length, profile.nRefs.length)
+  if (n === 0) return { t: [], sp: [] }
+
+  const idx0 = profile.profilePoints.findIndex((p) => p.nRefs > 0 && p.sp > 0)
+  const start = idx0 >= 0 ? idx0 : 0
+  const t0 = profile.tMs[start] ?? profile.tMs[0] ?? 0
+
+  const t: number[] = []
+  const sp: number[] = []
+  for (let i = start; i < n; i += 1) {
+    t.push(Math.max(0, (profile.tMs[i] ?? 0) - t0))
+    sp.push(profile.sp[i] ?? 0)
+  }
+  return { t, sp }
+}
+
 export function computeTorque(
   profile: ShotProfile | null,
   _fit: FrictionFitResult | null,
-  segment?: DecaySegment | null,
+  _segment?: DecaySegment | null,
 ): { torqueSeries: TorqueSeries | null; torqueFeatures: TorqueFeatures | null } {
+  void _fit
+  void _segment
   if (!profile || profile.sp.length < 2) {
     return { torqueSeries: null, torqueFeatures: null }
   }
 
-  const baseT = profile.tMs
-  const baseW = profile.sp
-  const peakIndex = findFirstPeakIndex(baseT, baseW)
-  const t = baseT.slice(0, peakIndex + 1)
-  const w = baseW.slice(0, peakIndex + 1)
-
-  if (t.length < 2 || w.length < 2) {
+  const { t: tAll, sp: spAll } = toStartRelativeProfile(profile)
+  if (tAll.length < 2 || spAll.length < 2) {
     return { torqueSeries: null, torqueFeatures: null }
   }
 
-  // Input proxy: derivative of smoothed RPM profile.
-  // Keep only positive component for "input torque (relative)" readability.
-  const smoothedW = smoothMovingAverage(w, 3)
-  const accelRaw = derivativeCentral(t, smoothedW).map((v) => (Number.isFinite(v) ? v : 0))
-  const accel = accelRaw.map((v) => Math.max(0, v))
+  // Torque analysis window: from pull start (0ms) to first SP peak.
+  const peakIndex = findFirstPeakIndex(tAll, spAll)
+  const endIdx = Math.max(1, Math.min(peakIndex, tAll.length - 1))
+  const t = tAll.slice(0, endIdx + 1)
+  const sp = spAll.slice(0, endIdx + 1)
+  if (t.length < 2 || sp.length < 2) {
+    return { torqueSeries: null, torqueFeatures: null }
+  }
 
-  // Prefer pre-decay positive peak as "max input" estimate.
-  const inputEnd = Math.max(
-    0,
-    Math.min(
-      accel.length - 1,
-      segment ? Math.min(peakIndex, Math.max(0, segment.startIndex - 1)) : peakIndex,
-    ),
-  )
+  // Piecewise torque from adjacent SP points:
+  // torque_i = (sp_{i+1} - sp_i) / (t_{i+1} - t_i)
+  const rawTau: number[] = []
+  const segmentStartTimes: number[] = []
+  const stepT: number[] = []
+  const stepTau: number[] = []
+  let invalidDtCount = 0
+
+  for (let i = 0; i < sp.length - 1; i += 1) {
+    const t0 = t[i]
+    const t1 = t[i + 1]
+    const dt = t1 - t0
+    if (!Number.isFinite(dt) || dt <= 0) {
+      invalidDtCount += 1
+      continue
+    }
+    const tau = (sp[i + 1] - sp[i]) / dt
+    rawTau.push(tau)
+    segmentStartTimes.push(t0)
+    // Step-like series: hold tau_i on [t_i, t_{i+1})
+    stepT.push(t0, t1)
+    stepTau.push(tau, tau)
+  }
+
+  if (rawTau.length === 0 || segmentStartTimes.length === 0 || stepT.length === 0) {
+    return { torqueSeries: null, torqueFeatures: null }
+  }
+
   let maxInputTau = Number.NEGATIVE_INFINITY
   let maxIdx = 0
-  for (let i = 0; i <= inputEnd; i += 1) {
-    if (accel[i] > maxInputTau) {
-      maxInputTau = accel[i]
+  for (let i = 0; i < rawTau.length; i += 1) {
+    if (rawTau[i] > maxInputTau) {
+      maxInputTau = rawTau[i]
       maxIdx = i
     }
   }
@@ -63,27 +99,32 @@ export function computeTorque(
   }
 
   let aucTauPos = 0
-  for (let i = 1; i < accel.length; i += 1) {
-    const dt = t[i] - t[i - 1]
+  for (let i = 0; i < rawTau.length; i += 1) {
+    const t0 = t[i]
+    const t1 = t[i + 1]
+    const dt = t1 - t0
     if (dt <= 0) continue
-    const y0 = Math.max(0, accel[i - 1])
-    const y1 = Math.max(0, accel[i])
-    aucTauPos += ((y0 + y1) * dt) / 2
+    aucTauPos += Math.max(0, rawTau[i]) * dt
   }
 
   const secondDiffs: number[] = []
-  for (let i = 1; i < accel.length - 1; i += 1) {
-    secondDiffs.push(Math.abs(accel[i + 1] - 2 * accel[i] + accel[i - 1]))
+  for (let i = 1; i < rawTau.length - 1; i += 1) {
+    secondDiffs.push(Math.abs(rawTau[i + 1] - 2 * rawTau[i] + rawTau[i - 1]))
   }
   const tauSmoothness =
     secondDiffs.length > 0
       ? secondDiffs.reduce((a, b) => a + b, 0) / secondDiffs.length
       : 0
 
+  if (invalidDtCount > 0) {
+    // Keep a lightweight trace when malformed/duplicate timestamps are present.
+    console.warn('[torque] invalid dt segments skipped:', invalidDtCount)
+  }
+
   return {
     torqueSeries: {
-      tMs: [...t],
-      tau: accel,
+      tMs: stepT,
+      tau: stepTau,
     },
     torqueFeatures: {
       maxInputTau: Number(maxInputTau.toFixed(6)),
@@ -91,7 +132,7 @@ export function computeTorque(
       maxTau: Number(maxInputTau.toFixed(6)),
       aucTauPos: Number(aucTauPos.toFixed(6)),
       tauSmoothness: Number(tauSmoothness.toFixed(6)),
-      tauPeakTime: t[maxIdx] ?? 0,
+      tauPeakTime: segmentStartTimes[maxIdx] ?? 0,
     },
   }
 }

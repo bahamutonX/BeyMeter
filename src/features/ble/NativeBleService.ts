@@ -38,6 +38,7 @@ export class NativeBleService implements BleServiceClient {
 
   setHandlers(handlers: BleNotifyHandlers): void {
     this.handlers = handlers
+    this.emitState()
   }
 
   async connect(): Promise<void> {

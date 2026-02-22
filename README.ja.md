@@ -1,175 +1,84 @@
 # BeyMeter（日本語）
 
-BeyMeter は、BEYBLADE Battle Pass（ベイバトルパス）と接続して、シュート波形と履歴を解析するアプリです。
+**BeyMeter は、シュートパワー改善のための実戦解析アプリです。**  
+ベイバトルパスと接続し、公式アプリの長いアニメーション待ちなしで、シュート結果を即時に確認できます。
 
-- Web（PC Chrome/Edge）で URL 配布して利用可能
-- iOS / Android は Capacitor ネイティブアプリとして実機動作
-- BLE 層を Web / Native で差し替える構成
-- UI は `ja/en` 自動切替（OS/ブラウザ優先言語、手動トグルなし）
+- Web版: https://bahamutonX.github.io/BeyMeter/
+- リポジトリ: https://github.com/bahamutonX/BeyMeter
 
-## 配布 URL（Web）
-- https://bahamutonX.github.io/BeyMeter/
+## 1. アプリの強み
+- **即時表示**: 記録シュートパワーをすぐ確認
+- **詳細解析**: 1本ごとのピーク時刻・AUC・入力トルクを可視化
+- **経時グラフ**: シュートパワーと入力トルク（相対値）を同時表示
+- **帯域比較**: 3000以上を1000刻みで集計し、複数ショットを比較
+- **有効長推定**: ランチャー理論AUCとの比から、実際に使えた有効長を表示
 
-## 動作環境
-- Web: Google Chrome / Microsoft Edge（Web Bluetooth 対応）
-- iOS: Capacitor + CoreBluetooth（Safari 単体は不可）
-- Android: Capacitor + BLE
+## 2. 動作環境
+- Web: Chrome / Edge（Web Bluetooth対応）
+- iOS: Capacitorネイティブアプリ
+- Android: Capacitorネイティブアプリ
 
-## 使い方（Web/PC）
-1. ベイバトルパスのボタンを長押しして待機状態にする
-2. 画面上部の `接続する` を押す
-3. デバイス選択で `BEYBLADE_TOOL01` を選ぶ
-4. ヘッダーの `ランチャー` を選択してから計測する
+## 3. 使い方
+1. ランチャー種別を選択（ストリング / ワインダー / ロング／ドラゴン）
+2. ベイバトルパスを長押しして待機状態にする
+3. アプリで「接続する」を押す
+4. シュートする
+5. 「シュート解析」と「履歴と分析」を確認する
 
-## 画面の見方
+## 4. 画面構成
+### 4.1 シュート解析（単回）
+表示項目は2ブロックに整理しています。
 
-### スマホUI（iOS/Android）
-- 3画面の横スワイプUI
-  - 左: 設定・接続
-  - 中央: シュート解析
-  - 右: 履歴と分析
-- 画面下の `○●○` インジケーターはタップでもページ移動可能
-- 接続時はガイドモーダルを表示（長押し案内）
-  - 成功: 「接続できました」
-  - 失敗/タイムアウト: エラーメッセージ表示
-  - `キャンセル` で途中中断可能
+- **シュートパワーの解析**
+  - シュートパワーピーク（ms, rpm）
+  - ピークまでのAUC
+  - 有効長（`実測AUC / 理論AUC` で算出）
 
-### シュート解析
-- 記録シュートパワー
-  - ベイバトルパス本体に記録された値（現在のメイン表示）
-- ランチャー
-  - そのショットで使用したランチャー種別
-- シュートタイプ
-  - 波形特徴から分類したタイプ（引き始め集中型 / 尻上がり型 / 一定入力型 / 波あり型）
+- **入力トルクの解析**
+  - 入力トルクピーク（ms, rpm/ms）
+  - 入力トルクピーク位置（%）
+  - シュートタイプ（前半型 / 一定型 / 後半型）
 
-### 直近のシュート波形
-- 横軸: 時間（ms）
-- `シュートパワー` / `入力トルク（相対値）` の表示切替
-- 右上にピーク時刻と最大シュートパワーを表示
+### 4.2 履歴と分析（複数）
+- シュートパワー帯域を選択
+- 帯域グラフで複数ショットを重ねて比較
+- 詳細データを2ボックス表示
+  - シュートパワーの解析（平均）
+  - 入力トルクの解析（平均）
+- 帯域統計でランチャー別の有効長・有効率（平均/SD）を表示
 
-### 履歴と分析
-- シュートパワー帯域（1000刻み）で履歴を分類
-- 帯域ごとに:
-  - 合計本数
-  - ランチャー内訳（3種類）
-  - 平均 / 最高 / 標準偏差
-- 詳細データ（平均=mean / 中央値=p50）
-  - 最大入力トルク（相対値）
-  - t_50
-  - t_peak
-  - slope_max
-  - auc_0_peak
-  - spike_score
-  - early_input_ratio / late_input_ratio / peak_input_time / input_stability
-- 各指標の `ⓘ` で意味を確認可能
+## 5. ランチャー理論値（固定）
+有効長の算出に使用する固定値です。
 
-## ランチャー記録
-- ヘッダーの3択ボタンでランチャーを選択
-  - ストリング
-  - ワインダー
-  - ロング／ドラゴン
-- 選択値はショット保存時に一緒に永続化
-- 帯域統計でランチャー別の本数比較が可能
+- ストリング: 最大11回転 / 理論AUC 660,000 / 全長 50.0cm
+- ワインダー: 最大8回転 / 理論AUC 480,000 / 全長 20.5cm
+- ロング／ドラゴン: 最大9回転 / 理論AUC 540,000 / 全長 22.5cm
 
-## デバッグページ
-- `/RawLog` は生ログ確認用ページ
-- 通常画面からはリンクしていません（直打ち専用）
-
-## 開発
+## 6. 開発
 ```bash
 pnpm install
 pnpm dev
-```
-
-## i18n（多言語）
-- 使用ライブラリ:
-  - `i18next`
-  - `react-i18next`
-  - `i18next-browser-languagedetector`
-- 初期化:
-  - `src/i18n.ts`
-  - 言語検出は `navigator` のみ
-  - `supportedLngs = ['en', 'ja']`
-  - `fallbackLng = 'en'`
-  - `load = 'languageOnly'`（`ja-JP` -> `ja`）
-- 翻訳ファイル:
-  - `src/locales/en/translation.json`
-  - `src/locales/ja/translation.json`
-
-### 翻訳追加ルール
-- キー命名はドット区切りで用途ごとに分割
-  - 例: `recent.title`, `ble.connected`, `metrics.t_peak.label`
-- Reactコンポーネントでは `useTranslation()` を使い、ハードコードを避ける
-- 補間は `t('key', { value })` を利用
-
-Native BLE を更新した場合:
-```bash
-pnpm cap:sync
-```
-
-### scripts
-```bash
-pnpm dev
 pnpm build
 pnpm lint
-pnpm preview
-pnpm build:pages
-pnpm preview:pages
-pnpm cap:sync
-pnpm cap:open:ios
-pnpm cap:open:android
-pnpm ios:add
-pnpm ios:sync
-pnpm ios:open
-pnpm android:add
-pnpm android:sync
-pnpm android:open
 ```
 
-## GitHub Pages
-- リポジトリ: `https://github.com/bahamutonX/BeyMeter`
-- Pages ビルド:
+### Capacitor同期
 ```bash
-pnpm build:pages
+pnpm exec cap sync
 ```
 
-補足:
-- `VITE_BASE_PATH=/BeyMeter/` 前提
-- `/RawLog` も 404 リライト経由で表示可能
-
-## iOS 実機起動
+### iOS
 ```bash
-pnpm build
-pnpm cap:sync
-pnpm cap:open:ios
+pnpm exec cap open ios
 ```
 
-初回のみ:
+### Android
 ```bash
-pnpm ios:add
+pnpm exec cap open android
 ```
 
-補足:
-- Native BLE は `@capacitor-community/bluetooth-le` を利用
-- iOS は Xcode で Team 設定後に実機 Run
+## 7. ライセンス
+MIT License
 
-## Android 実機起動
-```bash
-pnpm build
-pnpm cap:sync
-pnpm cap:open:android
-```
-
-初回のみ:
-```bash
-pnpm android:add
-```
-
-補足:
-- Native BLE は `@capacitor-community/bluetooth-le` を利用
-
-## ライセンス
-MIT License（`LICENSE`）
-
-## Author
-- by [@bahamutonX](https://x.com/bahamutonX)
+## 8. Author
+by [@bahamutonX](https://x.com/bahamutonX)
