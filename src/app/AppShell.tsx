@@ -1462,7 +1462,7 @@ export function AppShell({ route: _route }: AppShellProps) {
   return (
     <main className={desktopMainClass}>
       {headerNode}
-      <div className="desktop-tabbed-shell">
+      <div className={`desktop-tabbed-shell ${desktopView === 'meter' ? 'meter-view' : ''}`}>
         <div className="desktop-view-switch" role="tablist" aria-label={t('nav.tabsAria')}>
           <button
             type="button"

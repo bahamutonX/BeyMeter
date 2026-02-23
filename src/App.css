@@ -358,8 +358,8 @@
 }
 
 .tab-icon-svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   opacity: 0.92;
   flex: 0 0 auto;
 }
@@ -886,7 +886,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 -1px;
+  margin: 0 0 -2px;
   padding-inline: 2px;
   background: transparent;
 }
@@ -897,6 +897,7 @@
 }
 
 .desktop-content-shell {
+  margin-top: -1px;
   padding: 10px;
   overflow: visible;
   border-radius: 20px;
@@ -1504,6 +1505,20 @@
   .desktop-content-body > .meter-shell .meter-gauge {
     width: min(100%, clamp(900px, 88vw, 1320px));
     max-height: calc(100dvh - 330px);
+  }
+
+  .desktop-tabbed-shell.meter-view .desktop-content-shell {
+    height: calc(100dvh - 252px);
+  }
+
+  .desktop-tabbed-shell.meter-view .desktop-content-body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .desktop-tabbed-shell.meter-view .desktop-content-body > .meter-shell {
+    height: 100%;
+    min-height: 0;
   }
 
   .desktop-content-body > .recent-shell {
