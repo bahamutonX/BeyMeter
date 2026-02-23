@@ -17,6 +17,11 @@ BeyMeter connects to BEYBLADE Battle Pass and shows results immediately, with wa
 - Launcher-aware “effective length” estimation from AUC ratio
 - Local history accumulation for repeatability training
 
+## Lite / Pro
+- `Lite`: Bey Meter view (quick measurement)
+- `Pro`: Full analysis tabs (`Detail`, `Raw Log`) + history/band comparison
+- In Lite mode, Pro tabs show an upgrade modal (upsell flow placeholder)
+
 ## Pro / IAP Preparation
 - Entitlement abstraction is implemented in `src/features/entitlement.ts`
 - Integration notes: `docs/IAP_PREP.md`

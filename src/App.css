@@ -343,10 +343,10 @@
 }
 
 .header-mode-tab {
-  border: 1px solid rgba(88, 224, 255, 0.38);
-  border-bottom-color: rgba(88, 224, 255, 0.55);
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line);
   border-radius: 10px 10px 0 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -358,15 +358,15 @@
 }
 
 .tab-icon-svg {
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   opacity: 0.92;
   flex: 0 0 auto;
 }
 
 .header-mode-tab.active {
   color: #ebfbff;
-  border-color: rgba(88, 224, 255, 0.72);
+  border-color: var(--line);
   border-bottom-color: rgba(8, 17, 35, 0);
   background: linear-gradient(135deg, rgba(88, 224, 255, 0.38), rgba(255, 85, 199, 0.32));
 }
@@ -893,7 +893,7 @@
 
 .desktop-tabbed-shell {
   position: relative;
-  padding-top: 37px;
+  padding-top: 36px;
 }
 
 .desktop-content-shell {
@@ -901,6 +901,11 @@
   padding: 10px;
   overflow: visible;
   border-radius: 20px;
+}
+
+.history-only-actions {
+  justify-content: flex-end;
+  margin-bottom: 6px;
 }
 
 .desktop-tab-header {

@@ -969,13 +969,15 @@ export function AppShell({ route: _route }: AppShellProps) {
 
   const recentNode = (
     <section className="section-shell recent-shell">
-      <div className="section-head-row recent-head-row">
-        <SectionHeader
-          en={t('recent.en')}
-          title={t('recent.title')}
-          description={t('recent.description')}
-        />
-      </div>
+      {isMobileLayout ? (
+        <div className="section-head-row recent-head-row">
+          <SectionHeader
+            en={t('recent.en')}
+            title={t('recent.title')}
+            description={t('recent.description')}
+          />
+        </div>
+      ) : null}
       <div className="current-section">
         <NeonPanel className="current-left">
           <article className="main-card">
@@ -1069,18 +1071,26 @@ export function AppShell({ route: _route }: AppShellProps) {
 
   const historyNode = (
     <section className="section-shell history-shell">
-      <div className="section-head-row">
-        <SectionHeader
-          en={t('history.en')}
-          title={t('history.title')}
-          description={t('history.description')}
-        />
-        <div className="section-head-actions section-head-actions-pro">
+      {isMobileLayout ? (
+        <div className="section-head-row">
+          <SectionHeader
+            en={t('history.en')}
+            title={t('history.title')}
+            description={t('history.description')}
+          />
+          <div className="section-head-actions section-head-actions-pro">
+            <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
+              {t('history.reset')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="section-head-actions section-head-actions-pro history-only-actions">
           <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
             {t('history.reset')}
           </button>
         </div>
-      </div>
+      )}
       <div className="history-section">
         <NeonPanel className="history-left">
           <div className="panel-head">
@@ -1485,8 +1495,9 @@ export function AppShell({ route: _route }: AppShellProps) {
             onClick={() => handleDesktopSwitch('detail')}
           >
             <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M5 8h5l4 8h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="6.5" cy="8" r="1.3" fill="currentColor" />
+              <circle cx="17.5" cy="16" r="1.3" fill="currentColor" />
             </svg>
             {t('nav.detail')}
           </button>
@@ -1498,9 +1509,8 @@ export function AppShell({ route: _route }: AppShellProps) {
             onClick={() => handleDesktopSwitch('raw')}
           >
             <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 8h5l4 8h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="6.5" cy="8" r="1.3" fill="currentColor" />
-              <circle cx="17.5" cy="16" r="1.3" fill="currentColor" />
+              <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
             {t('pro.rawLogMode')}
           </button>

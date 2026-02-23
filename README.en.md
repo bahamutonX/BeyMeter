@@ -13,6 +13,11 @@ It connects to BEYBLADE Battle Pass and provides immediate feedback without wait
 - **Band comparison**: Aggregate and compare multi-shot behavior by power band
 - **Effective length estimate**: AUC ratio against launcher theory values
 
+## 1.1 Lite vs Pro
+- **Lite**: Focused Bey Meter view for quick measurement
+- **Pro**: Full tabs for Detail analysis, Raw Log, and history/band comparison
+- In Lite mode, tapping Pro-only tabs opens an upgrade modal (IAP upsell flow placeholder)
+
 ## 2. Supported platforms
 - Web: Chrome / Edge (Web Bluetooth)
 - iOS: Capacitor native app
