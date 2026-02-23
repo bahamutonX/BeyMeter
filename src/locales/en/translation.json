@@ -1,9 +1,48 @@
 {
   "app": {
-    "title": "BeyMeter"
+    "title": "BeyMeter",
+    "titleSimple": "BeyMeter Lite",
+    "titlePro": "BeyMeter Pro",
+    "titleRaw": "BeyMeter Raw"
+  },
+  "nav": {
+    "tabsAria": "Main tabs",
+    "meter": "Bey Meter",
+    "detail": "Detail",
+    "multi": "Multi",
+    "split": "Split View"
+  },
+  "meter": {
+    "en": "METER",
+    "title": "Bey Meter",
+    "description": "Show the latest shot instantly",
+    "latestShotPower": "Latest Shot",
+    "deviceBest": "MAX:",
+    "maxUpdated": "NEW MAX!",
+    "resetBest": "Reset Best",
+    "resetAll": "Reset All Data"
+  },
+  "pro": {
+    "lockTitle": "Shot Detail Analysis",
+    "lockDescription": "This feature is available in Pro ($○○).",
+    "unlockCta": "Purchase Pro",
+    "close": "Close",
+    "lockFeatureAnalysis": "Detailed analysis for each shot",
+    "lockFeatureHistory": "History comparison and band-based multi analysis",
+    "lockFeatureRaw": "Raw log view with decoded data",
+    "switchToPro": "Switch to Pro",
+    "switchToFree": "Switch to Lite",
+    "switchToProView": "Switch to Pro",
+    "switchToFreeView": "Switch to Lite",
+    "enabledNotice": "Pro mode enabled",
+    "disabledNotice": "Switched to Lite mode",
+    "proViewEnabledNotice": "Switched to Pro view",
+    "freeViewEnabledNotice": "Switched to Lite view",
+    "mobilePreview": "This screen is available in Pro.",
+    "rawLogMode": "Raw Log"
   },
   "common": {
-    "connect": "Connect",
+    "connect": "Connect Pass",
     "disconnect": "Disconnect",
     "connecting": "Connecting...",
     "disconnecting": "Disconnecting...",
@@ -15,10 +54,10 @@
     "noData": "No data"
   },
   "ble": {
-    "connected": "Beybattle Pass connected",
-    "disconnected": "Beybattle Pass disconnected",
-    "connecting": "Beybattle Pass connecting...",
-    "disconnecting": "Beybattle Pass disconnecting...",
+    "connected": "Pass connected",
+    "disconnected": "Pass disconnected",
+    "connecting": "Pass connecting...",
+    "disconnecting": "Pass disconnecting...",
     "stateConnected": "connected",
     "stateDisconnected": "disconnected",
     "stateConnecting": "connecting...",
@@ -26,15 +65,17 @@
     "attachOn": "Bey attached",
     "attachOff": "Bey detached",
     "attachUnknown": "Bey status: unknown",
+    "readyToShoot": "Ready to shoot",
     "commError": "Communication error",
-    "holdToPair": "Press and hold the Beybattle Pass button",
-    "nativeHoldToConnect": "Press and hold the Beybattle Pass button to connect.",
+    "connectGuideHeader": "Tap connect, then press and hold the Pass button.",
+    "holdToPair": "Press and hold the Pass button",
+    "nativeHoldToConnect": "Press and hold the Pass button to connect.",
     "nativeConnected": "Connected!",
     "nativeConnectFailed": "Connection failed. Please try again.",
-    "connectTimeout": "Connection timed out. Tap connect first, then press and hold the Beybattle Pass button.",
+    "connectTimeout": "Connection timed out. Tap connect first, then press and hold the Pass button.",
     "connectFailedSimple": "Connection failed.",
-    "deviceNotFound": "Beybattle Pass not found. Tap connect first, then press and hold the Beybattle Pass button.",
-    "connectFailed": "Connection failed. Tap connect first, then press and hold the Beybattle Pass button.",
+    "deviceNotFound": "Pass not found. Tap connect first, then press and hold the Pass button.",
+    "connectFailed": "Connection failed. Tap connect first, then press and hold the Pass button.",
     "initFailed": "Bluetooth initialization failed. Restart the app and reconnect.",
     "notAvailable": "Bluetooth is not available on this device."
   },
@@ -47,7 +88,8 @@
   },
   "mobile": {
     "settingsTitle": "Settings & Connection",
-    "settingsDesc": "Launcher selection and Beybattle Pass connection",
+    "settingsDesc": "Launcher selection and Pass connection",
+    "connectGuide": "Tap Connect, then press and hold the Pass button.",
     "connectedNotice": "Connected",
     "guideAfterConnect": "Attach the bey and shoot. You can continue shooting.",
     "pageMove": "Go to page {{page}}",
@@ -67,11 +109,11 @@
     "peakShotPower": "Shot Power Peak",
     "aucToPeak": "AUC to Peak",
     "peakInputTorque": "Input Torque Peak",
-    "torquePeakPosition": "Input Torque Peak Position",
+    "torquePeakPosition": "Input Torque Peak Timing",
     "shootTypeResult": "Shot Type",
     "effectiveLength": "Effective Length",
     "spSeries": "Shot Power",
-    "statusPrefix": "Beybattle Pass",
+    "statusPrefix": "Pass",
     "beyPrefix": "Bey"
   },
   "history": {
@@ -89,9 +131,11 @@
     "statsTitle": "Band Shot Power Stats",
     "torqueAnalysisTitle": "Input Torque Analysis",
     "shotPowerAnalysisTitle": "Shot Power Analysis",
-    "torquePeakPositionAvg": "Input Torque Peak Position (avg)",
+    "torquePeakPositionAvg": "Input Torque Peak Timing (avg)",
+    "torquePeakPositionHint": "Input torque peak timing estimates when maximum force occurred between pull start and launch.",
     "aucToPeakAvg": "AUC to Peak (avg)",
     "effectiveLengthAvg": "Effective Length (avg)",
+    "effectiveLengthHint": "Effective length estimates what percentage of string/winder travel was used effectively.",
     "aucToPeakHelp": "Indicator of effective pull distance (launcher draw distance).",
     "total": "Total",
     "avg": "Average",
@@ -113,12 +157,15 @@
     "turns": "turns"
   },
   "settings": {
-    "en": "SETTINGS"
+    "en": "SETTINGS",
+    "connectionEn": "SETTINGS & CONNECTION"
   },
   "rawlog": {
-    "title": "Beybattle Pass Raw Log",
+    "en": "RAW LOG",
+    "title": "Pass Raw Log",
+    "description": "Show raw packets from Pass and decoded analysis on the right.",
     "clear": "Clear Logs",
-    "back": "Back to Meter",
+    "back": "Back to Bey Meter",
     "connected": "Connected",
     "attached": "Bey attached",
     "bundle": "Shot Bundle",
@@ -128,6 +175,7 @@
     "receivedAll": "Received Logs (all)",
     "on": "ON",
     "off": "OFF",
+    "waiting": "Waiting for incoming logs",
     "summary": {
       "title": "Decoded Summary (per shot)",
       "headers": "Received headers",

@@ -41,6 +41,19 @@ function buildTicks(min: number, max: number, count = 6): number[] {
   return ticks
 }
 
+function niceUpperBound(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 100
+  const rough = value * 1.12
+  const exp = Math.floor(Math.log10(rough))
+  const base = 10 ** exp
+  const unit = rough / base
+  let step = 1
+  if (unit > 1) step = 2
+  if (unit > 2) step = 5
+  if (unit > 5) step = 10
+  return step * base
+}
+
 function drawLineSeries(
   ctx: CanvasRenderingContext2D,
   tMs: number[],
@@ -145,7 +158,12 @@ export function ProfileChart({
           const minPrimaryY = 0
           const maxPrimaryY = fixedPrimaryYMax ?? Math.max(...chart.primary.y)
 
-          const [minSecondaryY, maxSecondaryY] = [0, 100]
+          const secondaryValues = (chart.secondary?.y ?? []).filter(
+            (v): v is number => Number.isFinite(v),
+          )
+          const secondaryMax = secondaryValues.length > 0 ? Math.max(...secondaryValues) : 100
+          const minSecondaryY = 0
+          const maxSecondaryY = niceUpperBound(secondaryMax)
 
           const xAt = (tVal: number) => padLeft + ((tVal - minT) / Math.max(1, maxT - minT)) * innerW
           const yPrimaryAt = (v: number) => padTop + (1 - (v - minPrimaryY) / Math.max(1, maxPrimaryY - minPrimaryY)) * innerH

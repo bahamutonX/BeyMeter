@@ -29,6 +29,19 @@ function buildTicks(min: number, max: number, count = 6): number[] {
   return ticks
 }
 
+function niceUpperBound(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 100
+  const rough = value * 1.12
+  const exp = Math.floor(Math.log10(rough))
+  const base = 10 ** exp
+  const unit = rough / base
+  let step = 1
+  if (unit > 1) step = 2
+  if (unit > 2) step = 5
+  if (unit > 5) step = 10
+  return step * base
+}
+
 function drawLineSeries(
   ctx: CanvasRenderingContext2D,
   tMs: number[],
@@ -107,6 +120,13 @@ export function BandChart({
       })
       .filter((s): s is { t: number[]; y: number[] } => s !== null)
 
+    const tauValues = tauSeries.flatMap((series) =>
+      series.t
+        .map((tv, idx) => ({ tv, v: series.y[idx] }))
+        .filter((p) => Number.isFinite(p.tv) && Number.isFinite(p.v) && p.tv >= rangeStart && p.tv <= rangeEnd)
+        .map((p) => p.v as number),
+    )
+
     if (spSeries.length === 0) {
       ctx.fillStyle = '#8fa7bf'
       ctx.font = '12px sans-serif'
@@ -123,6 +143,9 @@ export function BandChart({
 
     const xAt = (tVal: number) => padLeft + ((tVal - rangeStart) / Math.max(1, rangeEnd - rangeStart)) * innerW
     const ySpAt = (v: number) => padTop + (1 - (v - fixedSpYMin) / Math.max(1, fixedSpYMax - fixedSpYMin)) * innerH
+    const minTauY = 0
+    const maxTauY = niceUpperBound(tauValues.length > 0 ? Math.max(...tauValues) : 100)
+    const yTauAt = (v: number) => padTop + (1 - (v - minTauY) / Math.max(1e-9, maxTauY - minTauY)) * innerH
 
     let displaySpT: number[] = []
     let displaySpY: number[] = []
@@ -141,13 +164,21 @@ export function BandChart({
         ctx.stroke()
       })
 
+      sampledTau.forEach((series, idx) => {
+        ctx.strokeStyle = `rgba(255,131,209,${Math.max(0.08, 0.28 - idx * 0.01)})`
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        drawLineSeries(ctx, series.t, series.y, xAt, yTauAt, rangeStart, rangeEnd)
+        ctx.stroke()
+      })
+
       // For peak guides/meta in overlay mode, use averaged line for stability.
       const aggSp = aggregateSeries(spSeries, rangeStart, rangeEnd, 1)
       displaySpT = aggSp.newTime
       displaySpY = aggSp.mean
 
-      if (sampledTau.length > 0) {
-        const aggTau = aggregateSeries(sampledTau, rangeStart, rangeEnd, 1)
+      if (tauSeries.length > 0) {
+        const aggTau = aggregateSeries(tauSeries, rangeStart, rangeEnd, 1)
         displayTauT = aggTau.newTime
         displayTauY = aggTau.mean
       }
@@ -203,9 +234,6 @@ export function BandChart({
         displayTauY = aggTau.mean
       }
     }
-
-    const [minTauY, maxTauY] = [0, 100]
-    const yTauAt = (v: number) => padTop + (1 - (v - minTauY) / Math.max(1e-9, maxTauY - minTauY)) * innerH
 
     // grid and axes over lines
     const xTicks = fixedXTicks ?? [0, 100, 200, 300, 400]

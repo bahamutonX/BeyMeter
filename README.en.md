@@ -77,8 +77,12 @@ pnpm exec cap open ios
 pnpm exec cap open android
 ```
 
-## 7. License
+## 7. Pro / IAP preparation
+- Entitlement abstraction: `src/features/entitlement.ts`
+- Integration notes for StoreKit / Play Billing swap: `docs/IAP_PREP.md`
+
+## 8. License
 MIT License
 
-## 8. Author
+## 9. Author
 by [@bahamutonX](https://x.com/bahamutonX)

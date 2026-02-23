@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { BbpPacket, ProtocolError } from '../features/ble/bbpTypes'
+import type { BbpPacket } from '../features/ble/bbpTypes'
 import {
   HEADER_ATTACH,
   HEADER_CHECKSUM,
@@ -9,18 +9,10 @@ import {
   HEADER_PROF_FIRST,
   HEADER_PROF_LAST,
 } from '../features/ble/bbpTypes'
-import { NeonPanel } from '../ui/NeonPanel'
-import { getBleService } from '../features/ble/bleSingleton'
-import { clearRawPackets, getRawPackets, pushRawPacket, subscribeRawPackets } from '../features/ble/rawPacketStore'
-import { navigateTo } from './navigation'
 
-interface RawLogState {
-  connected: boolean
-  connecting: boolean
-  disconnecting: boolean
-  attached: boolean
-  error: string | null
+interface RawLogPanelProps {
   packets: BbpPacket[]
+  onClear: () => void
 }
 
 interface RawShotBundleView {
@@ -115,13 +107,11 @@ function collectProfileMetrics(packets: BbpPacket[]) {
     tEndRaw = elapsed
   }
   const t0 = tStartRaw ?? 0
-  const tPeakMs = Math.max(0, tPeakMsRaw - t0)
-  const totalMs = Math.max(0, tEndRaw - t0)
   return {
     points: refs.length,
-    tPeakMs,
+    tPeakMs: Math.max(0, tPeakMsRaw - t0),
     peakSp,
-    totalMs,
+    totalMs: Math.max(0, tEndRaw - t0),
   }
 }
 
@@ -199,7 +189,7 @@ function buildSummaryRows(bundle: RawShotBundleView, t: TLike): BundleSummaryRow
       .join(' ')
     : null
 
-  const rows: BundleSummaryRow[] = [
+  return [
     { label: t('rawlog.summary.headers'), value: uniqueHeaders || t('common.none') },
     {
       label: t('rawlog.summary.a0Offset1'),
@@ -296,194 +286,93 @@ function buildSummaryRows(bundle: RawShotBundleView, t: TLike): BundleSummaryRow
       value: hasB0ToB6 ? t('rawlog.decode.match') : t('rawlog.decode.mismatch'),
     },
   ]
-
-  return rows
 }
 
-export function RawLogPage() {
-  const { t } = useTranslation()
-  const bleRef = useRef(getBleService())
-  const [state, setState] = useState<RawLogState>({
-    connected: false,
-    connecting: false,
-    disconnecting: false,
-    attached: false,
-    error: null,
-    packets: getRawPackets(),
-  })
+function buildShotBundles(packets: BbpPacket[]): RawShotBundleView[] {
+  if (packets.length === 0) return []
+  const chronological = [...packets].reverse()
+  const bundles: RawShotBundleView[] = []
+  let current: RawShotBundleView | null = null
+  let nextId = 1
 
-  useEffect(() => {
-    const ble = bleRef.current
-    const unsubscribe = subscribeRawPackets(() => {
-      setState((prev) => ({ ...prev, packets: getRawPackets() }))
-    })
-    ble.setHandlers({
-      onState: (s) => {
-        setState((prev) => ({
-          ...prev,
-          connected: s.connected,
-          disconnecting: false,
-          attached: s.connected ? s.beyAttached : false,
-        }))
-      },
-      onRaw: (packet) => {
-        pushRawPacket(packet)
-      },
-      onError: (err: ProtocolError) => {
-        const msg = err.detail ? `${err.message}: ${err.detail}` : err.message
-        setState((prev) => ({ ...prev, error: msg }))
-      },
-    })
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  async function handleConnect() {
-    setState((prev) => ({ ...prev, connecting: true, error: null }))
-    try {
-      await bleRef.current.connect()
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        error: error instanceof Error ? error.message : String(error),
-      }))
-    } finally {
-      setState((prev) => ({ ...prev, connecting: false }))
-    }
-  }
-
-  function handleDisconnect() {
-    setState((prev) => ({ ...prev, disconnecting: true }))
-    try {
-      bleRef.current.disconnect()
-    } finally {
-      setState((prev) => ({
-        ...prev,
-        connected: false,
-        disconnecting: false,
-        attached: false,
-      }))
-    }
-  }
-
-  function clearLogs() {
-    clearRawPackets()
-  }
-
-  const shotBundles = useMemo(() => {
-    if (state.packets.length === 0) return []
-    const chronological = [...state.packets].reverse()
-    const bundles: RawShotBundleView[] = []
-    let current: RawShotBundleView | null = null
-    let nextId = 1
-
-    for (let i = 0; i < chronological.length; i += 1) {
-      const p = chronological[i]
-
-      if (!current) {
-        current = {
-          id: nextId,
-          tStart: p.timestamp,
-          tEnd: p.timestamp,
-          packets: [],
-          isCompleteShot: false,
-        }
-      }
-
-      current.packets.push({ packet: p })
-      current.tEnd = p.timestamp
-
-      if (p.header === HEADER_PROF_LAST) {
-        current.isCompleteShot = true
-        bundles.push(current)
-        nextId += 1
-        current = null
+  for (let i = 0; i < chronological.length; i += 1) {
+    const p = chronological[i]
+    if (!current) {
+      current = {
+        id: nextId,
+        tStart: p.timestamp,
+        tEnd: p.timestamp,
+        packets: [],
+        isCompleteShot: false,
       }
     }
-
-    if (current && current.packets.length > 0) {
+    current.packets.push({ packet: p })
+    current.tEnd = p.timestamp
+    if (p.header === HEADER_PROF_LAST) {
+      current.isCompleteShot = true
       bundles.push(current)
+      nextId += 1
+      current = null
     }
+  }
+  if (current && current.packets.length > 0) bundles.push(current)
+  return bundles.reverse()
+}
 
-    return bundles.reverse()
-  }, [state.packets])
+export function RawLogPanel({ packets, onClear }: RawLogPanelProps) {
+  const { t } = useTranslation()
+  const shotBundles = useMemo(() => buildShotBundles(packets), [packets])
 
   return (
-    <main className="layout app-mobile app-compact neon-theme rawlog-page">
-      <NeonPanel className="rawlog-header">
-        <h1>{t('rawlog.title')}</h1>
-        <div className="rawlog-actions">
-          <button
-            className="mini-btn subtle"
-            type="button"
-            onClick={state.connected ? handleDisconnect : () => void handleConnect()}
-            disabled={state.connecting || state.disconnecting}
-          >
-            {state.connecting
-              ? t('common.connecting')
-              : state.disconnecting
-                ? t('common.disconnecting')
-                : state.connected
-                  ? t('common.disconnect')
-                  : t('common.connect')}
-          </button>
-          <button className="mini-btn subtle" type="button" onClick={clearLogs}>{t('rawlog.clear')}</button>
-          <button type="button" className="mini-btn subtle" onClick={() => navigateTo('./')}>
-            {t('rawlog.back')}
-          </button>
-        </div>
-        <section className="rawlog-status">
-          <div>{t('rawlog.connected')}: {state.connected ? t('rawlog.on') : t('rawlog.off')}</div>
-          <div>{t('rawlog.attached')}: {state.attached ? t('rawlog.on') : t('rawlog.off')}</div>
-          <div>{t('rawlog.packetCount')}: {state.packets.length}</div>
-        </section>
-
-        {state.error ? <p className="rawlog-error">{state.error}</p> : null}
-      </NeonPanel>
-
-      <NeonPanel className="rawlog-list-wrap">
+    <div className="rawlog-list-wrap">
+      <div className="rawlog-list-head">
         <h2>{t('rawlog.receivedAll')}</h2>
-        <div className="rawlog-list">
-          {shotBundles.map((bundle) => (
-            <details className="rawlog-bundle" key={`bundle-${bundle.id}`} open={bundle.id === shotBundles[0]?.id}>
-              <summary className="rawlog-bundle-summary">
-                <span>{`${t('rawlog.bundle')} #${bundle.id}`}</span>
-                <span>{`${formatTimestamp(bundle.tStart)} - ${formatTimestamp(bundle.tEnd)}`}</span>
-                <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
-                <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
-              </summary>
-              <div className="rawlog-bundle-body">
-                <div className="rawlog-packets-compact">
-                  {bundle.packets.map(({ packet: p }, idx) => (
-                    <div className="rawlog-row compact" key={`${bundle.id}-${p.timestamp}-${idx}`}>
-                      <div className="rawlog-meta">
-                        <span>{formatTimestamp(p.timestamp)}</span>
-                        <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
-                        <span>{`len=${p.length}`}</span>
-                      </div>
-                      <code>{p.hex}</code>
-                    </div>
-                  ))}
-                </div>
-                <div className="rawlog-summary-table-wrap">
-                  <div className="rawlog-summary-title">{t('rawlog.summary.title')}</div>
-                  <table className="rawlog-summary-table">
-                    <tbody>
-                      {buildSummaryRows(bundle, t).map((row) => (
-                        <tr key={`${bundle.id}-${row.label}`}>
-                          <th>{row.label}</th>
-                          <td>{row.value}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
-          ))}
+        <div className="rawlog-actions">
+          <button className="mini-btn subtle" type="button" onClick={onClear}>{t('history.reset')}</button>
         </div>
-      </NeonPanel>
-    </main>
+      </div>
+      <div className="rawlog-list">
+        {shotBundles.length === 0 ? (
+          <div className="rawlog-empty">{t('rawlog.waiting')}</div>
+        ) : null}
+        {shotBundles.map((bundle) => (
+          <details className="rawlog-bundle" key={`bundle-${bundle.id}`} open={bundle.id === shotBundles[0]?.id}>
+            <summary className="rawlog-bundle-summary">
+              <span>{`${t('rawlog.bundle')} #${bundle.id}`}</span>
+              <span>{`${formatTimestamp(bundle.tStart)} - ${formatTimestamp(bundle.tEnd)}`}</span>
+              <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
+              <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
+            </summary>
+            <div className="rawlog-bundle-body">
+              <div className="rawlog-packets-compact">
+                {bundle.packets.map(({ packet: p }, idx) => (
+                  <div className="rawlog-row compact" key={`${bundle.id}-${p.timestamp}-${idx}`}>
+                    <div className="rawlog-meta">
+                      <span>{formatTimestamp(p.timestamp)}</span>
+                      <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
+                      <span>{`len=${p.length}`}</span>
+                    </div>
+                    <code>{p.hex}</code>
+                  </div>
+                ))}
+              </div>
+              <div className="rawlog-summary-table-wrap">
+                <div className="rawlog-summary-title">{t('rawlog.summary.title')}</div>
+                <table className="rawlog-summary-table">
+                  <tbody>
+                    {buildSummaryRows(bundle, t).map((row) => (
+                      <tr key={`${bundle.id}-${row.label}`}>
+                        <th>{row.label}</th>
+                        <td>{row.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
   )
 }

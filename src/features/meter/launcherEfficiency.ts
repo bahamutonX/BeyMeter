@@ -1,4 +1,3 @@
-import type { ShotProfile } from '../ble/bbpTypes'
 import type { LauncherType } from './shootType'
 
 export interface LauncherSpec {
@@ -9,9 +8,7 @@ export interface LauncherSpec {
 
 export interface LauncherEfficiency {
   launcher: LauncherType
-  peakTurn: number
-  maxRev: number
-  aucPeak: number
+  aucMeasured: number
   theoreticalAuc: number
   effRatio: number
   effPercent: number
@@ -37,41 +34,16 @@ export const LAUNCHER_SPECS: Record<LauncherType, LauncherSpec> = {
   },
 }
 
-function collectValidNRefs(profile: ShotProfile | null): number[] {
-  if (!profile || !Array.isArray(profile.nRefs)) return []
-  const nRefs: number[] = []
-  for (const n of profile.nRefs) {
-    if (!Number.isFinite(n) || n <= 0) break
-    nRefs.push(n)
-  }
-  return nRefs
-}
-
-export function computeLauncherEfficiency(
-  profile: ShotProfile | null,
+export function computeLauncherEfficiencyFromAuc(
+  aucMeasured: number,
   launcher: LauncherType,
 ): LauncherEfficiency | null {
-  const nRefs = collectValidNRefs(profile)
-  if (nRefs.length === 0) return null
-
-  let peakTurn = 1
-  let peakRpm = Number.NEGATIVE_INFINITY
-  for (let i = 0; i < nRefs.length; i += 1) {
-    const rpm = 7_500_000 / nRefs[i]
-    if (rpm > peakRpm) {
-      peakRpm = rpm
-      peakTurn = i + 1
-    }
-  }
-
+  if (!Number.isFinite(aucMeasured) || aucMeasured <= 0) return null
   const spec = LAUNCHER_SPECS[launcher]
-  const aucPeak = 60000 * peakTurn
-  const effRatio = spec.theoreticalAuc > 0 ? aucPeak / spec.theoreticalAuc : 0
+  const effRatio = spec.theoreticalAuc > 0 ? aucMeasured / spec.theoreticalAuc : 0
   return {
     launcher,
-    peakTurn,
-    maxRev: spec.maxRev,
-    aucPeak,
+    aucMeasured,
     theoreticalAuc: spec.theoreticalAuc,
     effRatio,
     effPercent: effRatio * 100,
@@ -79,4 +51,3 @@ export function computeLauncherEfficiency(
     lengthCm: spec.lengthCm,
   }
 }
-

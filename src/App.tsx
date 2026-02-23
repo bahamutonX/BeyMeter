@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { AppShell } from './app/AppShell'
-import { RawLogPage } from './app/RawLogPage'
+import type { MainRoute } from './app/AppShell'
 import { subscribeNavigation } from './app/navigation'
 
 function resolveCurrentPath(): string {
@@ -17,32 +17,28 @@ function resolveCurrentPath(): string {
   return current
 }
 
+function resolveMainRoute(path: string): MainRoute {
+  if (path.includes('/detail')) return 'detail'
+  if (path.includes('/multi')) return 'multi'
+  return 'meter'
+}
+
 function App() {
   const [path, setPath] = useState(() => resolveCurrentPath())
-  const isRawLogPath =
-    path.endsWith('/RawLog') ||
-    path.includes('/RawLog/') ||
-    path.endsWith('/rawlog') ||
-    path.includes('/rawlog/')
-  const [showOpening, setShowOpening] = useState(() => !isRawLogPath)
+  const [showOpening, setShowOpening] = useState(() => true)
 
   useEffect(() => {
-    if (isRawLogPath) return
     const timer = window.setTimeout(() => {
       setShowOpening(false)
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [isRawLogPath])
+  }, [])
 
   useEffect(() => {
     return subscribeNavigation(() => {
       setPath(resolveCurrentPath())
     })
   }, [])
-
-  if (isRawLogPath) {
-    return <RawLogPage />
-  }
 
   if (showOpening) {
     return (
@@ -58,7 +54,7 @@ function App() {
     )
   }
 
-  return <AppShell />
+  return <AppShell route={resolveMainRoute(path)} />
 }
 
 export default App

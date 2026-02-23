@@ -17,6 +17,10 @@ BeyMeter connects to BEYBLADE Battle Pass and shows results immediately, with wa
 - Launcher-aware “effective length” estimation from AUC ratio
 - Local history accumulation for repeatability training
 
+## Pro / IAP Preparation
+- Entitlement abstraction is implemented in `src/features/entitlement.ts`
+- Integration notes: `docs/IAP_PREP.md`
+
 ## License
 MIT License
 

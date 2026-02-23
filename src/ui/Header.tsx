@@ -10,9 +10,13 @@ interface HeaderProps {
   launcherType: LauncherType
   launcherOptions: Array<{ value: LauncherType; label: string }>
   connectNotice?: string | null
+  modeNotice?: string | null
+  isPro: boolean
+  displayMode: 'free' | 'pro'
   onLauncherTypeChange: (value: LauncherType) => void
   onConnect: () => void
   onDisconnect: () => void
+  onTogglePro: () => void
 }
 
 function StatusDot({
@@ -41,11 +45,16 @@ export function Header({
   launcherType,
   launcherOptions,
   connectNotice,
+  modeNotice,
+  isPro,
+  displayMode,
   onLauncherTypeChange,
   onConnect,
   onDisconnect,
+  onTogglePro,
 }: HeaderProps) {
   const { t } = useTranslation()
+  const isProView = isPro && displayMode === 'pro'
   const connectionLabel = connecting
     ? t('ble.connecting')
     : disconnecting
@@ -64,51 +73,70 @@ export function Header({
 
   return (
     <header className="app-header">
-      <div className="app-title-row">
-        <h1 className="app-title">{t('app.title')}</h1>
-        <a
-          className="app-credit"
-          href="https://x.com/bahamutonX"
-          target="_blank"
-          rel="noreferrer"
-        >
-          by @bahamutonX
-        </a>
+      <div className="app-header-top">
+        <div className="app-title-row">
+          <h1 className="app-title">{isProView ? t('app.titlePro') : t('app.titleSimple')}</h1>
+          <a
+            className="app-credit"
+            href="https://x.com/bahamutonX"
+            target="_blank"
+            rel="noreferrer"
+          >
+            by @bahamutonX
+          </a>
+          <button type="button" className="mini-btn subtle pro-switch-btn" onClick={onTogglePro}>
+            {!isPro
+              ? t('pro.switchToPro')
+              : displayMode === 'pro'
+                ? t('pro.switchToFreeView')
+                : t('pro.switchToProView')}
+          </button>
+          {modeNotice ? <span className="mode-switch-notice">{modeNotice}</span> : null}
+        </div>
+        <div className="status-row top-status-row">
+          <StatusDot active={bleConnected || connecting} label={connectionLabel} variant={connecting || disconnecting ? 'connecting' : 'default'} />
+          <StatusDot active={bleConnected && beyAttached} label={attachLabel} />
+          {lastError ? <StatusDot active={true} label={t('ble.commError')} variant="error" /> : null}
+          {bleConnected ? <div className="status-ready">{t('ble.readyToShoot')}</div> : null}
+        </div>
       </div>
-      <div className="status-row">
-        <button
-          className="connect-pill"
-          onClick={bleConnected ? onDisconnect : onConnect}
-          type="button"
-          disabled={connecting || disconnecting}
-        >
-          {actionLabel}
-        </button>
-        <StatusDot active={bleConnected || connecting} label={connectionLabel} variant={connecting || disconnecting ? 'connecting' : 'default'} />
-        <StatusDot active={bleConnected && beyAttached} label={attachLabel} />
-        {lastError ? <StatusDot active={true} label={t('ble.commError')} variant="error" /> : null}
-        <div className="header-launcher-toggle" role="group" aria-label={t('launcher.label')}>
-          <span className="launcher-toggle-label">{t('launcher.label')}</span>
-          <div className="launcher-toggle-buttons">
-            {launcherOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`launcher-toggle-btn ${launcherType === opt.value ? 'active' : ''}`}
-                onClick={() => onLauncherTypeChange(opt.value)}
-                aria-pressed={launcherType === opt.value}
-              >
-                {opt.label}
-              </button>
-            ))}
+
+      <div className="header-settings-panel">
+        <div className="header-settings-head">
+          <div className="section-en">{t('settings.connectionEn')}</div>
+          <h2>{t('mobile.settingsTitle')}</h2>
+        </div>
+        <div className="header-controls-row">
+          <div className="header-control-block header-launcher-block">
+            <span className="header-control-title">{t('launcher.selectPrompt')}</span>
+            <div className="launcher-toggle-buttons">
+              {launcherOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`launcher-toggle-btn ${launcherType === opt.value ? 'active' : ''}`}
+                  onClick={() => onLauncherTypeChange(opt.value)}
+                  aria-pressed={launcherType === opt.value}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="header-control-block header-connect-block">
+            <span className="header-control-title">{t('ble.connectGuideHeader')}</span>
+            <button
+              className="connect-pill"
+              onClick={bleConnected ? onDisconnect : onConnect}
+              type="button"
+              disabled={connecting || disconnecting}
+            >
+              {actionLabel}
+            </button>
+            {connectNotice ? <span className="mode-switch-notice">{connectNotice}</span> : null}
           </div>
         </div>
       </div>
-      {connecting ? <div className="hint-line">{t('ble.holdToPair')}</div> : null}
-      {connectNotice ? <div className="hint-line success">{connectNotice}</div> : null}
-      {lastError ? (
-        <div className="hint-line error">{lastError}</div>
-      ) : null}
     </header>
   )
 }

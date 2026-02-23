@@ -77,8 +77,12 @@ pnpm exec cap open ios
 pnpm exec cap open android
 ```
 
-## 7. ライセンス
+## 7. Pro / IAP 下準備
+- Entitlement抽象層: `src/features/entitlement.ts`
+- StoreKit / Play Billing への差し替え手順メモ: `docs/IAP_PREP.md`
+
+## 8. ライセンス
 MIT License
 
-## 8. Author
+## 9. Author
 by [@bahamutonX](https://x.com/bahamutonX)

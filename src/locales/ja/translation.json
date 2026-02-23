@@ -1,9 +1,48 @@
 {
   "app": {
-    "title": "BeyMeter"
+    "title": "BeyMeter",
+    "titleSimple": "BeyMeter Lite",
+    "titlePro": "BeyMeter Pro",
+    "titleRaw": "BeyMeter Raw"
+  },
+  "nav": {
+    "tabsAria": "メインタブ",
+    "meter": "ベイメーター",
+    "detail": "詳細解析",
+    "multi": "複数解析",
+    "split": "Split表示"
+  },
+  "meter": {
+    "en": "METER",
+    "title": "ベイメーター",
+    "description": "最新シュートを即時表示",
+    "latestShotPower": "最新シュート",
+    "deviceBest": "MAX:",
+    "maxUpdated": "MAX更新！",
+    "resetBest": "ベストリセット",
+    "resetAll": "全データリセット"
+  },
+  "pro": {
+    "lockTitle": "シュート詳細解析",
+    "lockDescription": "この機能はPro版（○○円）で利用できます",
+    "unlockCta": "Pro版を購入する",
+    "close": "閉じる",
+    "lockFeatureAnalysis": "詳細解析（単発シュート解析）",
+    "lockFeatureHistory": "履歴比較と帯域別の複数解析",
+    "lockFeatureRaw": "Rawログ表示とデータ解釈",
+    "switchToPro": "Pro版に変更",
+    "switchToFree": "Lite版に変更",
+    "switchToProView": "Pro版に変更",
+    "switchToFreeView": "Lite版に変更",
+    "enabledNotice": "Proモードを有効にしました",
+    "disabledNotice": "Lite表示に切り替えました",
+    "proViewEnabledNotice": "Pro表示に切り替えました",
+    "freeViewEnabledNotice": "Lite表示に切り替えました",
+    "mobilePreview": "この画面はPro版で利用できます。",
+    "rawLogMode": "Rawログ表示"
   },
   "common": {
-    "connect": "接続する",
+    "connect": "パスと接続する",
     "disconnect": "切断する",
     "connecting": "接続中...",
     "disconnecting": "切断中...",
@@ -15,10 +54,10 @@
     "noData": "データなし"
   },
   "ble": {
-    "connected": "ベイバトルパス 接続中",
-    "disconnected": "ベイバトルパス 未接続",
-    "connecting": "ベイバトルパス 接続中...",
-    "disconnecting": "ベイバトルパス 切断中...",
+    "connected": "パス接続中",
+    "disconnected": "パス未接続",
+    "connecting": "パス接続中...",
+    "disconnecting": "パス切断中...",
     "stateConnected": "接続中",
     "stateDisconnected": "未接続",
     "stateConnecting": "接続中...",
@@ -26,15 +65,17 @@
     "attachOn": "ベイ装着",
     "attachOff": "ベイ未装着",
     "attachUnknown": "ベイ状態: 不明",
+    "readyToShoot": "シュートできます",
     "commError": "通信エラー",
-    "holdToPair": "ベイバトルパスを長押ししてください",
-    "nativeHoldToConnect": "ベイバトルパスを長押しして接続してください",
+    "connectGuideHeader": "接続ボタンを押してパスを長押ししてください",
+    "holdToPair": "パスを長押ししてください",
+    "nativeHoldToConnect": "パスを長押しして接続してください",
     "nativeConnected": "接続しました！",
     "nativeConnectFailed": "接続できませんでした。再度お試しください。",
-    "connectTimeout": "接続がタイムアウトしました。接続ボタンを押してからベイバトルパスを長押ししてください。",
+    "connectTimeout": "接続がタイムアウトしました。接続ボタンを押してからパスを長押ししてください。",
     "connectFailedSimple": "接続できませんでした。",
-    "deviceNotFound": "ベイバトルパスが見つかりません。接続ボタンを押してからベイバトルパスを長押ししてください。",
-    "connectFailed": "接続に失敗しました。接続ボタンを押してからベイバトルパスを長押ししてください。",
+    "deviceNotFound": "パスが見つかりません。接続ボタンを押してからパスを長押ししてください。",
+    "connectFailed": "接続に失敗しました。接続ボタンを押してからパスを長押ししてください。",
     "initFailed": "Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。",
     "notAvailable": "この端末ではBluetooth接続が利用できません。"
   },
@@ -47,8 +88,9 @@
   },
   "mobile": {
     "settingsTitle": "設定・接続",
-    "settingsDesc": "ランチャー選択とベイバトルパス接続",
-    "connectedNotice": "接続できました",
+    "settingsDesc": "ランチャー選択とパス接続",
+    "connectGuide": "接続ボタンを押してからパスを長押ししてください",
+    "connectedNotice": "パスと接続できました",
     "guideAfterConnect": "ベイを装着して、シュートしてください。連続してシュートできます。",
     "pageMove": "ページ {{page}} に移動",
     "swipeHint": "左右スワイプ、または下のドットでページ移動できます"
@@ -67,16 +109,16 @@
     "peakShotPower": "シュートパワーピーク",
     "aucToPeak": "ピークまでのAUC",
     "peakInputTorque": "入力トルクピーク",
-    "torquePeakPosition": "入力トルクピーク位置",
+    "torquePeakPosition": "入力トルクピークタイミング",
     "shootTypeResult": "シュートタイプ判定",
     "effectiveLength": "有効長",
     "spSeries": "シュートパワー",
-    "statusPrefix": "ベイバトルパス",
+    "statusPrefix": "パス",
     "beyPrefix": "ベイ"
   },
   "history": {
     "en": "HISTORY",
-    "title": "履歴と分析",
+    "title": "シュート履歴と分析",
     "description": "過去のデータから帯域別に特徴を解析することができます",
     "reset": "データリセット",
     "confirmReset": "履歴データをすべて削除します。元に戻せません。実行しますか？",
@@ -89,9 +131,11 @@
     "statsTitle": "帯域のシュートパワー統計",
     "torqueAnalysisTitle": "入力トルクの解析",
     "shotPowerAnalysisTitle": "シュートパワーの解析",
-    "torquePeakPositionAvg": "入力トルクピーク位置（平均）",
+    "torquePeakPositionAvg": "入力トルクピークタイミング（平均）",
+    "torquePeakPositionHint": "入力トルクピークタイミングとは、最も力が入ったのは引き始めから発出までの時間のどのタイミングだったかを推定する指標です。",
     "aucToPeakAvg": "ピークまでのAUC（平均）",
     "effectiveLengthAvg": "有効長（平均）",
+    "effectiveLengthHint": "有効長とは、ストリングやワインダーの何%の長さを有効に使えたかを推定する指標です。",
     "aucToPeakHelp": "有効入力距離（ランチャーを引っ張った距離）に相当する指標です。",
     "total": "合計",
     "avg": "平均",
@@ -113,12 +157,15 @@
     "turns": "回転"
   },
   "settings": {
-    "en": "SETTINGS"
+    "en": "SETTINGS",
+    "connectionEn": "SETTINGS & CONNECTION"
   },
   "rawlog": {
-    "title": "ベイバトルパス Raw Log",
+    "en": "RAW LOG",
+    "title": "パス Rawログ",
+    "description": "パスが出すログをそのまま表示し、右に解析内容を表示",
     "clear": "ログ消去",
-    "back": "メーターへ戻る",
+    "back": "ベイメーターへ戻る",
     "connected": "接続",
     "attached": "ベイ装着",
     "bundle": "シュート束",
@@ -128,6 +175,7 @@
     "receivedAll": "受信ログ（全件）",
     "on": "ON",
     "off": "OFF",
+    "waiting": "受信ログ待機中",
     "summary": {
       "title": "受信データ解釈（1シュート要約）",
       "headers": "受信ヘッダ",
