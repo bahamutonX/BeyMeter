@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { AppShell } from './app/AppShell'
 import type { MainRoute } from './app/AppShell'
 import { subscribeNavigation } from './app/navigation'
+import { ShellRouter } from './ui/shell/ShellRouter'
 
 function resolveCurrentPath(): string {
   const current = window.location.pathname
@@ -54,7 +54,7 @@ function App() {
     )
   }
 
-  return <AppShell route={resolveMainRoute(path)} />
+  return <ShellRouter route={resolveMainRoute(path)} />
 }
 
 export default App

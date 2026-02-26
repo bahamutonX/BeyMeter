@@ -431,6 +431,15 @@
   color: var(--text-dim);
 }
 
+/* Status labels: never show full+short at the same time */
+.status-label-full {
+  display: inline !important;
+}
+
+.status-label-short {
+  display: none !important;
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
@@ -1877,6 +1886,15 @@
     font-size: 44px;
   }
 
+  /* Compact header status text on narrower layouts */
+  .status-label-full {
+    display: none !important;
+  }
+
+  .status-label-short {
+    display: inline !important;
+  }
+
   .sub-card-row {
     gap: 8px;
   }
@@ -2381,5 +2399,1607 @@
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 8px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE LAYOUT OVERRIDES
+   The <main> element carries both .layout (height:auto, has padding)
+   and .mobile-shell (grid). We need a definite height so the
+   grid's 1fr row actually fills the viewport.
+═══════════════════════════════════════════════════════════════ */
+
+/* Give the mobile shell a definite height so 1fr rows work */
+.layout.mobile-shell {
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+/* Non-meter pages scroll vertically; meter page does not */
+.mobile-page {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mobile-page-meter {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   METER PAGE INTERNAL LAYOUT
+   Structure:
+     .section-shell.meter-shell          ← grid: auto + 1fr
+       .section-head-row                 ← auto (title + toggle btn)
+       .panel.meter-main-panel           ← 1fr (NeonPanel)
+         .meter-center-stack             ← grid: 1fr + auto
+           .meter-visual-slot            ← 1fr  (gauge OR numeric)
+             .meter-visual-inner
+               .meter-gauge-wrap         ← displays SVG gauge
+               .meter-numeric-wrap       ← displays numeric value
+           .meter-stopwatch              ← auto (always visible)
+─────────────────────────────────────────────────────────────── */
+
+.mobile-page-meter .meter-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 2px;
+  padding: 0 var(--layout-pad-x, 12px) 4px;
+  margin-top: 0;
+}
+
+.mobile-page-meter .meter-main-panel {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 6px 8px;
+  gap: 0;
+  position: relative; /* for best-badge absolute positioning */
+}
+
+/* best-badge floats over the gauge, doesn't affect grid layout */
+.mobile-page-meter .meter-main-panel .best-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* meter-center-stack always occupies the full 1fr row */
+.mobile-page-meter .meter-center-stack {
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px;
+  justify-items: center;
+  align-items: stretch;
+}
+
+.mobile-page-meter .meter-visual-slot,
+.mobile-page-meter .meter-visual-inner,
+.mobile-page-meter .meter-gauge-wrap {
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* Portrait: gauge fills available width */
+.mobile-page-meter .meter-gauge {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+.mobile-page-meter .meter-numeric-wrap {
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+/* Stopwatch is in the auto row — always present below the gauge */
+.mobile-page-meter .meter-stopwatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 2px 0;
+}
+
+/* Compact section header for meter page */
+.mobile-page-meter .section-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 2px;
+  margin: 0;
+}
+.mobile-page-meter .section-en {
+  display: block !important;
+}
+/* Override mobile default that makes actions full-width */
+.mobile-page-meter .section-head-actions {
+  width: auto;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LANDSCAPE: compact chrome, gauge fills height
+══════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) and (orientation: landscape) {
+  /* Compact titlebar */
+  .mobile-titlebar {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 0;
+  }
+  .mobile-title {
+    font-size: 15px;
+  }
+
+  /* Compact segment */
+  .mobile-segment-switch {
+    margin: 0;
+    padding: 2px;
+    gap: 2px;
+  }
+  .mobile-segment-btn {
+    min-height: 22px;
+    font-size: 8px;
+    padding: 2px 5px;
+  }
+
+  /* Compact footer */
+  .mobile-footer {
+    min-height: 20px;
+    padding-top: 1px;
+    padding-bottom: calc(1px + env(safe-area-inset-bottom, 0px));
+  }
+  .mobile-page-dots {
+    padding: 1px 0;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  /* In landscape, gauge is height-constrained → fill height, auto width */
+  .mobile-page-meter .meter-gauge {
+    width: auto;
+    height: 100%;
+    max-width: none;
+    max-height: 100%;
+  }
+
+  /* Compact meter section head */
+  .mobile-page-meter .section-head-row {
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  .mobile-page-meter .meter-shell {
+    padding-bottom: 2px;
+    gap: 1px;
+  }
+  .mobile-page-meter .section-header h2 {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .mobile-page-meter .section-header p {
+    display: none;
+  }
+  .mobile-page-meter .meter-mode-actions button {
+    font-size: 8px;
+    min-height: 18px;
+    padding: 1px 5px;
+  }
+
+  /* Reduce panel padding */
+  .mobile-page-meter .meter-main-panel {
+    padding: 2px 4px;
+  }
+  .mobile-page-meter .meter-center-stack {
+    gap: 2px;
+  }
+
+  /* Compact stopwatch */
+  .mobile-page-meter .meter-stopwatch {
+    padding: 0;
+    gap: 8px;
+  }
+  .mobile-page-meter .meter-stopwatch-value {
+    font-size: clamp(12px, 3.6vh, 24px);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-page-meter .meter-stopwatch-unit {
+    display: none;
+  }
+  .mobile-page-meter .meter-stopwatch-btn {
+    min-height: 22px;
+    min-width: 58px;
+    font-size: 9px;
+    padding: 2px 8px;
+  }
+
+  /* Numeric font sizes for landscape */
+  .mobile-page-meter .meter-numeric-value {
+    font-size: clamp(36px, 14vh, 100px);
+  }
+  .mobile-page-meter .meter-numeric-unit {
+    font-size: clamp(12px, 4vh, 22px);
+  }
+  .mobile-page-meter .meter-numeric-max {
+    font-size: clamp(10px, 3vh, 16px);
+  }
+
+  /* Settings — 2 columns */
+  .mobile-settings-content.settings-content-fill {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "left right" "error error";
+    column-gap: 10px;
+    row-gap: 6px;
+    align-items: start;
+  }
+  .mobile-settings-content .settings-left-card  { grid-area: left; }
+  .mobile-settings-content .settings-right-card { grid-area: right; }
+  .mobile-settings-content .mobile-error-box    { grid-area: error; }
+
+  /* Raw log full width */
+  .mobile-page .raw-mobile-shell,
+  .mobile-page .raw-mobile-shell .history-section,
+  .mobile-page .raw-mobile-shell .history-right,
+  .mobile-page .raw-mobile-shell .rawlog-history-panel,
+  .mobile-page .raw-mobile-shell .rawlog-list-wrap {
+    width: 100%;
+  }
+  .rawlog-bundle-body {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PORTRAIT MOBILE: hide tab icons (text only to save space)
+══════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) and (orientation: portrait) {
+  .mobile-segment-btn .tab-icon-svg {
+    display: none;
+  }
+  .mobile-segment-btn {
+    gap: 0;
+  }
+}
+
+/* ===== Final UI polish: controls / segmented controls / status signs ===== */
+.desktop-view-switch {
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  justify-content: center !important;
+}
+
+.desktop-segment-switch,
+.mobile-segment-switch {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 4px !important;
+  border: 1px solid rgba(88, 224, 255, 0.26) !important;
+  border-radius: 999px !important;
+  background: rgba(12, 24, 45, 0.72) !important;
+}
+
+.header-mode-tab,
+.mobile-segment-btn {
+  min-height: 34px !important;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  font-weight: 700 !important;
+}
+
+.tab-icon-svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex: 0 0 14px !important;
+}
+
+.segment-tab-title {
+  font-size: clamp(11px, 0.95vw, 14px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.status-row,
+.mobile-status-inline,
+.top-status-row {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+.status-item {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.status-item.compact {
+  font-size: 12px !important;
+}
+
+.status-dot {
+  width: 10px !important;
+  height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+}
+
+.settings-gear-btn,
+.mini-btn.subtle,
+.connect-pill,
+.mobile-connect-btn {
+  min-height: 36px !important;
+  padding: 7px 14px !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+}
+
+.settings-gear-label {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 767px) {
+  .mobile-segment-switch {
+    width: 100% !important;
+    justify-content: stretch !important;
+  }
+
+  .mobile-segment-btn {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    padding: 5px 8px !important;
+  }
+
+  .segment-tab-title {
+    font-size: clamp(10px, 2.3vw, 12px) !important;
+  }
+
+  .status-item.compact {
+    font-size: 11px !important;
+  }
+
+  .settings-gear-btn,
+  .mini-btn.subtle,
+  .connect-pill,
+  .mobile-connect-btn {
+    min-height: 34px !important;
+    padding: 6px 12px !important;
+  }
+}
+
+/* ===== Unified 5-page layout (settings / meter / shot / history / raw) ===== */
+.layout.app-mobile {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+}
+
+.app-header,
+.mobile-titlebar {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.desktop-tabbed-shell {
+  position: static !important;
+  padding-top: 0 !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+
+.desktop-view-switch {
+  position: static !important;
+  left: auto !important;
+  transform: none !important;
+  justify-self: center !important;
+  margin: 2px 0 8px !important;
+}
+
+.desktop-content-shell {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 10px !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+.desktop-content-body,
+.desktop-pager,
+.desktop-page,
+.mobile-pager,
+.mobile-page {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.desktop-page,
+.mobile-page {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.desktop-content-body.desktop-view-meter .desktop-page,
+.mobile-page-meter {
+  overflow: hidden !important;
+}
+
+/* show page titles (left top) on all views */
+.desktop-content-body .meter-shell > .section-head-row,
+.desktop-content-body .recent-shell > .section-head-row,
+.desktop-content-body .history-shell > .section-head-row {
+  display: flex !important;
+}
+
+.section-head-row {
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.section-header h2 {
+  line-height: 1.15 !important;
+}
+
+.section-header p {
+  font-weight: 500 !important;
+}
+
+.desktop-footer-credit,
+.mobile-footer {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+}
+
+/* ===== Final visual unification (neon dark-blue) ===== */
+.desktop-segment-switch,
+.mobile-segment-switch {
+  border: 1px solid rgba(88, 224, 255, 0.34) !important;
+  background: rgba(9, 22, 44, 0.82) !important;
+  border-radius: 999px !important;
+}
+
+.header-mode-tab,
+.mobile-segment-btn {
+  border: 1px solid transparent !important;
+  color: #a8cde8 !important;
+  background: transparent !important;
+}
+
+.header-mode-tab.active,
+.mobile-segment-btn.active {
+  color: #ebfbff !important;
+  border-color: rgba(88, 224, 255, 0.58) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.42), rgba(255, 85, 199, 0.32)) !important;
+  box-shadow: 0 0 10px rgba(88, 224, 255, 0.25) inset !important;
+}
+
+.status-touch-btn {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
+.settings-gear-btn,
+.mini-btn.subtle,
+.connect-pill,
+.mobile-connect-btn {
+  border: 1px solid rgba(88, 224, 255, 0.56) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.24), rgba(255, 85, 199, 0.2)) !important;
+  color: #e8f7ff !important;
+}
+
+.settings-gear-btn:hover,
+.mini-btn.subtle:hover,
+.connect-pill:hover,
+.mobile-connect-btn:hover {
+  border-color: rgba(88, 224, 255, 0.78) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.34), rgba(255, 85, 199, 0.28)) !important;
+}
+
+/* Raw log always use full available width */
+.desktop-content-body.desktop-view-raw .history-section,
+.desktop-content-body.desktop-view-raw .history-right,
+.desktop-content-body.desktop-view-raw .rawlog-history-shell,
+.desktop-content-body.desktop-view-raw .rawlog-history-panel,
+.desktop-content-body.desktop-view-raw .rawlog-list-wrap,
+.desktop-content-body.desktop-view-raw .rawlog-list,
+.mobile-page .raw-mobile-shell .history-section,
+.mobile-page .raw-mobile-shell .history-right,
+.mobile-page .raw-mobile-shell .rawlog-history-shell,
+.mobile-page .raw-mobile-shell .rawlog-history-panel,
+.mobile-page .raw-mobile-shell .rawlog-list-wrap,
+.mobile-page .raw-mobile-shell .rawlog-list {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.desktop-content-body.desktop-view-raw .history-section,
+.mobile-page .raw-mobile-shell .history-section {
+  grid-template-columns: 1fr !important;
+}
+
+/* Meter sizing:
+   portrait => width-based, landscape => height-based (stopwatch always visible) */
+.meter-center-stack {
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.meter-stopwatch {
+  justify-self: center !important;
+  align-self: end !important;
+  margin-top: 6px !important;
+}
+
+.meter-visual-slot,
+.meter-visual-inner,
+.meter-gauge-wrap,
+.meter-numeric-wrap {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.meter-numeric-wrap {
+  display: grid !important;
+  place-items: center !important;
+  align-content: center !important;
+}
+
+@media (orientation: portrait) {
+  .meter-gauge {
+    width: min(92vw, 1200px) !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: calc(100% - 68px) !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 72px), 78vh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+/* ===== Final consistency patch: controls + raw width + meter sizing ===== */
+
+/* 1) Segment control + tabs: unify to original neon dark-blue style */
+.desktop-segment-switch,
+.mobile-segment-switch {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 4px !important;
+  border: 1px solid rgba(88, 224, 255, 0.34) !important;
+  border-radius: 999px !important;
+  background: rgba(9, 22, 44, 0.82) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02) !important;
+}
+
+.header-mode-tab,
+.mobile-segment-btn {
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #a8cde8 !important;
+  min-height: 34px !important;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+}
+
+.header-mode-tab.active,
+.mobile-segment-btn.active {
+  color: #ebfbff !important;
+  border-color: rgba(88, 224, 255, 0.58) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.42), rgba(255, 85, 199, 0.32)) !important;
+  box-shadow: 0 0 10px rgba(88, 224, 255, 0.25) inset !important;
+}
+
+.tab-icon-svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex: 0 0 14px !important;
+}
+
+.segment-tab-title {
+  font-size: clamp(11px, 0.95vw, 14px) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+/* 2) Status area: remove square frame artifact around clickable status */
+.status-touch-btn {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.status-touch-btn:focus-visible {
+  outline: 1px solid rgba(88, 224, 255, 0.42) !important;
+  outline-offset: 2px !important;
+}
+
+/* 3) Button style consistency */
+.settings-gear-btn,
+.mini-btn.subtle,
+.connect-pill,
+.mobile-connect-btn {
+  min-height: 36px !important;
+  padding: 7px 14px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(88, 224, 255, 0.56) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.24), rgba(255, 85, 199, 0.2)) !important;
+  color: #e8f7ff !important;
+  font-weight: 700 !important;
+}
+
+.settings-gear-btn:hover,
+.mini-btn.subtle:hover,
+.connect-pill:hover,
+.mobile-connect-btn:hover {
+  border-color: rgba(88, 224, 255, 0.78) !important;
+  background: linear-gradient(135deg, rgba(88, 224, 255, 0.34), rgba(255, 85, 199, 0.28)) !important;
+}
+
+/* 4) Raw log should always use full width */
+.raw-mobile-shell,
+.raw-mobile-shell .history-section,
+.raw-mobile-shell .history-right,
+.raw-mobile-shell .rawlog-history-shell,
+.raw-mobile-shell .rawlog-history-panel,
+.raw-mobile-shell .rawlog-list-wrap,
+.raw-mobile-shell .rawlog-list,
+.raw-mobile-shell .rawlog-date-group,
+.raw-mobile-shell .rawlog-bundle,
+.desktop-content-body.desktop-view-raw .history-section,
+.desktop-content-body.desktop-view-raw .history-right,
+.desktop-content-body.desktop-view-raw .rawlog-history-shell,
+.desktop-content-body.desktop-view-raw .rawlog-history-panel,
+.desktop-content-body.desktop-view-raw .rawlog-list-wrap,
+.desktop-content-body.desktop-view-raw .rawlog-list,
+.desktop-content-body.desktop-view-raw .rawlog-date-group,
+.desktop-content-body.desktop-view-raw .rawlog-bundle {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.raw-mobile-shell .history-section,
+.desktop-content-body.desktop-view-raw .history-section {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+}
+
+/* 5) Meter sizing rule:
+   - portrait: width-based
+   - landscape: height-based
+   and stopwatch must stay visible */
+.meter-main-panel {
+  min-height: 0 !important;
+}
+
+.meter-center-stack {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  justify-items: center !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+}
+
+.meter-visual-slot,
+.meter-visual-inner,
+.meter-gauge-wrap,
+.meter-numeric-wrap {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.meter-visual-slot,
+.meter-visual-inner,
+.meter-gauge-wrap {
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+}
+
+.meter-numeric-wrap {
+  display: grid !important;
+  place-items: center !important;
+  align-content: center !important;
+  text-align: center !important;
+}
+
+.meter-stopwatch {
+  justify-self: center !important;
+  align-self: end !important;
+  margin-top: 4px !important;
+  margin-bottom: 0 !important;
+}
+
+@media (orientation: portrait) {
+  .meter-gauge {
+    width: min(94vw, clamp(280px, 86vw, 1180px)) !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: calc(100% - 72px) !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 74px), 86vh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .layout.app-mobile .mobile-page-meter .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 58px), 74dvh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .layout.app-mobile .mobile-page-meter .meter-stopwatch {
+    margin-top: 2px !important;
+  }
+}
+
+/* Ensure footer row is always visible on desktop/tablet landscape as well */
+.layout.app-mobile.simple-desktop {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+}
+
+.layout.app-mobile.simple-desktop > .desktop-tabbed-shell {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.layout.app-mobile.simple-desktop > .desktop-footer-credit {
+  min-height: 30px !important;
+  padding: 2px 0 6px !important;
+  align-self: end !important;
+}
+
+/* Restore desktop/tablet segmented-page pager (5 pages, 1 page visible) */
+.desktop-pager {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-snap-type: x mandatory !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+}
+
+.desktop-pager::-webkit-scrollbar {
+  display: none !important;
+}
+
+.desktop-page {
+  flex: 0 0 100% !important;
+  min-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  scroll-snap-align: start !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* ===== Final layout stabilization (footer/dots/mobile overflow/stopwatch visibility) ===== */
+
+/* Avoid right overflow on phone portrait */
+.layout.app-mobile {
+  overflow-x: hidden !important;
+}
+
+.mobile-shell,
+.mobile-titlebar,
+.mobile-segment-switch,
+.mobile-pager,
+.mobile-footer {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.mobile-page {
+  padding-right: 0 !important;
+  overflow-x: hidden !important;
+}
+
+/* Mobile segment should scroll horizontally instead of breaking layout */
+.mobile-segment-switch {
+  display: flex !important;
+  justify-content: flex-start !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.mobile-segment-switch::-webkit-scrollbar {
+  display: none !important;
+}
+
+.mobile-segment-btn {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+}
+
+/* Footer bar always visible and centered */
+.desktop-footer-credit,
+.mobile-footer {
+  position: relative !important;
+  z-index: 5 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-height: 42px !important;
+  padding: 4px 8px 6px !important;
+  background: rgba(7, 16, 33, 0.88) !important;
+  border-top: 1px solid rgba(88, 224, 255, 0.22) !important;
+}
+
+.desktop-page-dots,
+.mobile-page-dots {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.desktop-page-dot,
+.mobile-page-dot {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 2px !important;
+  color: #9ec2dd !important;
+  line-height: 1 !important;
+  font-size: 12px !important;
+}
+
+.desktop-page-dot.active,
+.mobile-page-dot.active {
+  color: #ebfbff !important;
+}
+
+.desktop-credit-line,
+.mobile-footer-credit {
+  margin-top: 3px !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  color: #86a7c5 !important;
+  white-space: nowrap !important;
+}
+
+/* Keep meter stopwatch visible in all orientations */
+.meter-main-panel {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+.meter-center-stack {
+  min-height: 0 !important;
+  height: 100% !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-items: stretch !important;
+}
+
+.meter-visual-slot {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.meter-stopwatch {
+  position: relative !important;
+  z-index: 2 !important;
+  justify-self: center !important;
+  align-self: end !important;
+  margin-top: 6px !important;
+  margin-bottom: 0 !important;
+}
+
+/* Gauge size caps: reserve bottom space for stopwatch */
+@media (orientation: portrait) {
+  .meter-gauge {
+    width: min(96vw, 1200px) !important;
+    max-height: calc(100% - 120px) !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 130px), 78vh) !important;
+    max-height: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Ensure desktop/tablet keeps footer row visible */
+.layout.app-mobile.simple-desktop {
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+}
+
+/* ===== Final stabilization: footer visibility + dot clipping ===== */
+.layout.app-mobile,
+.layout.app-mobile.simple-desktop,
+.mobile-shell {
+  min-height: 100dvh !important;
+}
+
+.mobile-shell {
+  height: 100dvh !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+}
+
+.desktop-footer-credit,
+.mobile-footer {
+  min-height: 54px !important;
+  padding: 6px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+}
+
+.desktop-page-dots,
+.mobile-page-dots {
+  min-height: 20px !important;
+  gap: 10px !important;
+}
+
+.desktop-page-dot,
+.mobile-page-dot {
+  width: 14px !important;
+  height: 14px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+}
+
+.desktop-page-dot .dot-core,
+.mobile-page-dot .dot-core {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  border: 1px solid #9ec2dd !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+}
+
+.desktop-page-dot.active .dot-core,
+.mobile-page-dot.active .dot-core {
+  background: #ecfbff !important;
+  border-color: #ecfbff !important;
+  box-shadow: 0 0 10px rgba(88, 224, 255, 0.5) !important;
+}
+
+.desktop-credit-line,
+.mobile-footer-credit {
+  margin-top: 2px !important;
+  line-height: 1.2 !important;
+}
+
+/* ===== Landscape shell hard-fix: always reserve footer row ===== */
+@media (orientation: landscape) {
+  .layout.app-mobile:not(.mobile-shell) {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    overflow: hidden !important;
+    padding-top: max(8px, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .layout.app-mobile:not(.mobile-shell) > .desktop-tabbed-shell {
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+  }
+
+  .layout.app-mobile:not(.mobile-shell) .desktop-content-shell,
+  .layout.app-mobile:not(.mobile-shell) .desktop-content-body,
+  .layout.app-mobile:not(.mobile-shell) .desktop-pager {
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  .layout.app-mobile:not(.mobile-shell) .desktop-content-body {
+    overflow: hidden !important;
+  }
+
+  .layout.app-mobile:not(.mobile-shell) .desktop-page {
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+.layout.app-mobile:not(.mobile-shell) > .desktop-footer-credit {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  align-self: end !important;
+}
+}
+
+/* ===== Unified controls/typography (final pass) ===== */
+.header-mode-tab,
+.mobile-segment-btn {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+}
+
+.segment-tab-title {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+}
+
+.mini-btn.subtle,
+.connect-pill,
+.settings-gear-btn {
+  min-height: 38px !important;
+  padding: 7px 14px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.section-en {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.14em !important;
+}
+
+.section-header h2 {
+  font-size: 38px !important;
+  font-weight: 800 !important;
+}
+
+.section-header p {
+  font-size: 20px !important;
+  font-weight: 500 !important;
+}
+
+@media (max-width: 767px) {
+  .header-mode-tab,
+  .mobile-segment-btn {
+    font-size: 12px !important;
+    min-height: 34px !important;
+    padding: 5px 10px !important;
+  }
+
+  .mobile-segment-switch {
+    gap: 6px !important;
+    padding-inline: 2px !important;
+  }
+
+  .mobile-segment-btn {
+    min-width: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .mini-btn.subtle,
+  .connect-pill,
+  .settings-gear-btn {
+    min-height: 34px !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .section-en {
+    font-size: 11px !important;
+  }
+
+  .section-header h2 {
+    font-size: 30px !important;
+  }
+
+  .section-header p {
+    font-size: 17px !important;
+  }
+}
+
+/* ===== View header visibility (shot/history left-top title) ===== */
+.desktop-content-body > .recent-shell > .section-head-row,
+.desktop-content-body > .history-shell > .section-head-row {
+  display: flex !important;
+}
+
+/* ===== Meter page fit: no scroll + max gauge size + fixed stopwatch position ===== */
+.desktop-view-meter .desktop-page,
+.mobile-page-meter {
+  overflow: hidden !important;
+}
+
+.desktop-view-meter .meter-shell,
+.mobile-page-meter .meter-shell {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.desktop-view-meter .meter-main-panel,
+.mobile-page-meter .meter-main-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 8px 10px !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+.desktop-view-meter .meter-center-stack,
+.mobile-page-meter .meter-center-stack {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  justify-items: center !important;
+}
+
+.desktop-view-meter .meter-visual-slot,
+.mobile-page-meter .meter-visual-slot {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+}
+
+.desktop-view-meter .meter-visual-inner,
+.mobile-page-meter .meter-visual-inner {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+}
+
+.desktop-view-meter .meter-stopwatch,
+.mobile-page-meter .meter-stopwatch {
+  justify-self: center !important;
+  align-self: end !important;
+  margin-top: 6px !important;
+  margin-bottom: 2px !important;
+}
+
+@media (orientation: portrait) {
+  .mobile-page-meter .meter-gauge,
+  .desktop-view-meter .meter-gauge {
+    width: min(96vw, calc(100% - 18px), 1180px) !important;
+    height: auto !important;
+    max-height: calc(100% - 86px) !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .mobile-page-meter .meter-gauge,
+  .desktop-view-meter .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 86px), 92dvh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+/* ===== Typography normalize (smaller, consistent) ===== */
+.section-en {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.14em !important;
+}
+
+.section-header h2 {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+}
+
+.section-header p {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  color: #9ec2dd !important;
+}
+
+@media (max-width: 767px) {
+  .section-header h2 {
+    font-size: 22px !important;
+  }
+
+  .section-header p {
+    font-size: 12px !important;
+  }
+}
+
+/* ===== Raw log full-width in all shells ===== */
+.rawlog-history-shell {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.rawlog-history-shell > .rawlog-history-panel {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.rawlog-history-panel .rawlog-list-wrap,
+.rawlog-history-panel .rawlog-list,
+.rawlog-history-panel .rawlog-date-group,
+.rawlog-history-panel .rawlog-bundle {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+/* ===== Segment control adaptive mode =====
+   Wide: centered, icon + text
+   Narrow: compact text-only for fit */
+@media (min-width: 760px) {
+  .desktop-segment-switch,
+  .mobile-segment-switch {
+    width: max-content !important;
+    max-width: 100% !important;
+    margin-inline: auto !important;
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding-inline: 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .desktop-segment-switch::-webkit-scrollbar,
+  .mobile-segment-switch::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .header-mode-tab,
+  .mobile-segment-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    min-width: max-content !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    gap: 6px !important;
+  }
+
+  .header-mode-tab .tab-icon-svg,
+  .mobile-segment-btn .tab-icon-svg {
+    display: inline-block !important;
+    width: 14px !important;
+    height: 14px !important;
+    flex: 0 0 auto !important;
+  }
+}
+
+@media (max-width: 759px) {
+  .desktop-segment-switch,
+  .mobile-segment-switch {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding-inline: 2px !important;
+    overflow: hidden !important;
+  }
+
+  .header-mode-tab,
+  .mobile-segment-btn {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 6px 6px !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    justify-content: center !important;
+    gap: 0 !important;
+  }
+
+  .header-mode-tab .tab-icon-svg,
+  .mobile-segment-btn .tab-icon-svg {
+    display: none !important;
+  }
+
+  .segment-tab-title {
+    display: block !important;
+    width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+  }
+}
+
+/* ===== Meter typography final tuning =====
+   - Stopwatch: as large as shot power display
+   - Numeric mode: very large SP + larger MAX text */
+.meter-stopwatch {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 14px !important;
+}
+
+.meter-stopwatch-value {
+  font-size: clamp(54px, 9.5vw, 132px) !important;
+  line-height: 0.95 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+  font-variant-numeric: tabular-nums !important;
+  color: #eaf8ff !important;
+}
+
+.meter-numeric-wrap {
+  display: grid !important;
+  place-items: center !important;
+  align-content: center !important;
+  gap: 10px !important;
+}
+
+.meter-numeric-value {
+  font-size: clamp(92px, 16vw, 240px) !important;
+  line-height: 0.9 !important;
+  font-weight: 800 !important;
+  color: #eefcff !important;
+  text-shadow: 0 0 22px rgba(88, 224, 255, 0.32) !important;
+}
+
+.meter-numeric-unit {
+  font-size: clamp(28px, 4vw, 52px) !important;
+  font-weight: 700 !important;
+  margin-left: 8px !important;
+}
+
+.meter-numeric-max {
+  font-size: clamp(34px, 5vw, 74px) !important;
+  line-height: 1.02 !important;
+  font-weight: 700 !important;
+  color: #b8d8f6 !important;
+}
+
+/* History launcher legend (S / W / L/D) should stay subtle like other help text */
+.band-legend {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  color: #9ec2dd !important;
+  margin-top: 2px !important;
+}
+
+/* Compact landscape phones: force numeric meter layout that fully fits */
+@media (orientation: landscape) and (max-height: 500px) {
+  .compact-landscape-meter .meter-numeric-wrap {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    align-content: center !important;
+    overflow: visible !important;
+  }
+
+  .compact-landscape-meter .meter-numeric-value {
+    font-size: clamp(68px, 15vh, 120px) !important;
+    line-height: 0.92 !important;
+    white-space: nowrap !important;
+  }
+
+  .compact-landscape-meter .meter-numeric-unit {
+    font-size: clamp(22px, 4.2vh, 36px) !important;
+  }
+
+  .compact-landscape-meter .meter-numeric-max {
+    font-size: clamp(24px, 4.8vh, 40px) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .compact-landscape-meter .meter-visual-slot,
+  .compact-landscape-meter .meter-visual-inner {
+    overflow: visible !important;
+  }
+}
+
+/* Desktop / tablet landscape: enlarge gauge more while keeping stopwatch visible */
+@media (min-width: 760px) and (orientation: landscape) {
+  .desktop-view-meter .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 66px), 94vh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+/* Meter header action button should always stay at top-right */
+.meter-head-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 8px !important;
+}
+
+.meter-head-row .section-head-actions,
+.meter-mode-actions {
+  justify-self: end !important;
+  align-self: start !important;
+  margin-top: 0 !important;
+  width: auto !important;
+}
+
+/* Stopwatch should match meter center value scale (not oversized) */
+.meter-stopwatch-value {
+  font-size: clamp(30px, 3.6vw, 40px) !important;
+  line-height: 1 !important;
+}
+
+/* Mobile landscape: keep gauge visible and large enough */
+@media (max-width: 767px) and (orientation: landscape) {
+  .mobile-page-meter .meter-visual-slot,
+  .mobile-page-meter .meter-visual-inner,
+  .mobile-page-meter .meter-gauge-wrap {
+    min-height: 170px !important;
+  }
+
+  .mobile-page-meter .meter-gauge {
+    width: auto !important;
+    height: min(calc(100% - 54px), 80dvh) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+/* ===== Final desktop/tablet landscape meter boost =====
+   Make gauge larger while keeping stopwatch visible */
+@media (min-width: 760px) and (orientation: landscape) {
+  .desktop-content-body.desktop-view-meter .meter-main-panel {
+    padding: 8px 12px 10px !important;
+    display: grid !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    min-height: 0 !important;
+  }
+
+  .desktop-content-body.desktop-view-meter .meter-center-stack {
+    height: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+    justify-items: center !important;
+  }
+
+  .desktop-content-body.desktop-view-meter .meter-visual-slot,
+  .desktop-content-body.desktop-view-meter .meter-visual-inner,
+  .desktop-content-body.desktop-view-meter .meter-gauge-wrap {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    overflow: hidden !important;
+  }
+
+  .desktop-content-body.desktop-view-meter .meter-gauge {
+    width: auto !important;
+    height: min(calc(100dvh - 285px), 78vh, 860px) !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .desktop-content-body.desktop-view-meter .meter-stopwatch {
+    justify-self: center !important;
+    align-self: end !important;
+    margin-top: 6px !important;
+    margin-bottom: 2px !important;
   }
 }

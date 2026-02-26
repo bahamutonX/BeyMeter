@@ -481,6 +481,7 @@ export class BbpProtocol {
       count: n,
       profile: profileResult.profile,
       launchMarkerMs,
+      releaseEventAt: releaseDetected ? this.lastReleaseEventAt : null,
       estReason,
       receivedAt: shotTimestamp,
     }

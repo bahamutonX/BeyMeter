@@ -1,4 +1,3 @@
-import type { LauncherType } from '../features/meter/shootType'
 import { useTranslation } from 'react-i18next'
 
 interface HeaderProps {
@@ -6,32 +5,29 @@ interface HeaderProps {
   connecting: boolean
   disconnecting: boolean
   beyAttached: boolean
-  lastError: string | null
-  launcherType: LauncherType
-  launcherOptions: Array<{ value: LauncherType; label: string }>
-  connectNotice?: string | null
   modeNotice?: string | null
   isPro: boolean
   displayMode: 'free' | 'pro'
-  onLauncherTypeChange: (value: LauncherType) => void
-  onConnect: () => void
-  onDisconnect: () => void
+  onStatusAction: () => void
   onTogglePro: () => void
 }
 
 function StatusDot({
   active,
   label,
+  shortLabel,
   variant,
 }: {
   active: boolean
   label: string
+  shortLabel?: string
   variant?: 'default' | 'error' | 'connecting'
 }) {
   return (
     <div className="status-item">
       <span className={`status-dot ${active ? 'on' : 'off'} ${variant ?? 'default'}`} />
-      <span>{label}</span>
+      <span className="status-label-full">{label}</span>
+      <span className="status-label-short">{shortLabel ?? label}</span>
     </div>
   )
 }
@@ -41,20 +37,14 @@ export function Header({
   connecting,
   disconnecting,
   beyAttached,
-  lastError,
-  launcherType,
-  launcherOptions,
-  connectNotice,
   modeNotice,
   isPro,
   displayMode,
-  onLauncherTypeChange,
-  onConnect,
-  onDisconnect,
+  onStatusAction,
   onTogglePro,
 }: HeaderProps) {
   const { t } = useTranslation()
-  const isProView = isPro && displayMode === 'pro'
+  const _isProView = isPro && displayMode === 'pro'
   const connectionLabel = connecting
     ? t('ble.connecting')
     : disconnecting
@@ -62,28 +52,23 @@ export function Header({
     : bleConnected
       ? t('ble.connected')
       : t('ble.disconnected')
-  const attachLabel = bleConnected ? (beyAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')
-  const actionLabel = connecting
-    ? t('common.connecting')
+  const connectionLabelShort = connecting
+    ? t('ble.stateConnecting')
     : disconnecting
-      ? t('common.disconnecting')
-      : bleConnected
-        ? t('common.disconnect')
-        : t('common.connect')
+      ? t('ble.stateDisconnecting')
+    : bleConnected
+      ? t('ble.stateConnected')
+      : t('ble.stateDisconnected')
+  const attachLabel = bleConnected ? (beyAttached ? t('ble.attachOn') : t('ble.attachOff')) : t('ble.attachUnknown')
+  const attachLabelShort = bleConnected
+    ? (beyAttached ? t('ble.attachOnShort') : t('ble.attachOffShort'))
+    : t('ble.attachUnknownShort')
 
   return (
     <header className="app-header">
       <div className="app-header-top">
         <div className="app-title-row">
-          <h1 className="app-title">{isProView ? t('app.titlePro') : t('app.titleSimple')}</h1>
-          <a
-            className="app-credit"
-            href="https://x.com/bahamutonX"
-            target="_blank"
-            rel="noreferrer"
-          >
-            by @bahamutonX
-          </a>
+          <h1 className="app-title">{_isProView ? t('app.titlePro') : t('app.titleSimple')}</h1>
           <button type="button" className="mini-btn subtle pro-switch-btn" onClick={onTogglePro}>
             {!isPro
               ? t('pro.switchToPro')
@@ -91,52 +76,33 @@ export function Header({
                 ? t('pro.switchToFreeView')
                 : t('pro.switchToProView')}
           </button>
-          {modeNotice ? <span className="mode-switch-notice">{modeNotice}</span> : null}
         </div>
         <div className="status-row top-status-row">
-          <StatusDot active={bleConnected || connecting} label={connectionLabel} variant={connecting || disconnecting ? 'connecting' : 'default'} />
-          <StatusDot active={bleConnected && beyAttached} label={attachLabel} />
-          {lastError ? <StatusDot active={true} label={t('ble.commError')} variant="error" /> : null}
+          <button
+            type="button"
+            className="status-touch-btn"
+            onClick={onStatusAction}
+            disabled={connecting || disconnecting}
+          >
+            <StatusDot
+              active={bleConnected || connecting}
+              label={connectionLabel}
+              shortLabel={connectionLabelShort}
+              variant={connecting || disconnecting ? 'connecting' : 'default'}
+            />
+          </button>
+          <button
+            type="button"
+            className="status-touch-btn"
+            onClick={onStatusAction}
+            disabled={connecting || disconnecting}
+          >
+            <StatusDot active={bleConnected && beyAttached} label={attachLabel} shortLabel={attachLabelShort} />
+          </button>
           {bleConnected ? <div className="status-ready">{t('ble.readyToShoot')}</div> : null}
         </div>
       </div>
-
-      <div className="header-settings-panel">
-        <div className="header-settings-head">
-          <div className="section-en">{t('settings.connectionEn')}</div>
-          <h2>{t('mobile.settingsTitle')}</h2>
-        </div>
-        <div className="header-controls-row">
-          <div className="header-control-block header-launcher-block">
-            <span className="header-control-title">{t('launcher.selectPrompt')}</span>
-            <div className="launcher-toggle-buttons">
-              {launcherOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={`launcher-toggle-btn ${launcherType === opt.value ? 'active' : ''}`}
-                  onClick={() => onLauncherTypeChange(opt.value)}
-                  aria-pressed={launcherType === opt.value}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="header-control-block header-connect-block">
-            <span className="header-control-title">{t('ble.connectGuideHeader')}</span>
-            <button
-              className="connect-pill"
-              onClick={bleConnected ? onDisconnect : onConnect}
-              type="button"
-              disabled={connecting || disconnecting}
-            >
-              {actionLabel}
-            </button>
-            {connectNotice ? <span className="mode-switch-notice">{connectNotice}</span> : null}
-          </div>
-        </div>
-      </div>
+      {modeNotice ? <span className="mode-switch-notice app-header-mode-notice">{modeNotice}</span> : null}
     </header>
   )
 }

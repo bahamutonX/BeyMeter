@@ -39,8 +39,9 @@ export function MeterGauge({ value, best, maxRpm, bestLabel }: MeterGaugeProps) 
   const markerRightY = markerBaseY - Math.sin(markerA - Math.PI / 2) * 5
   const markerTipX = cx + Math.cos(markerA) * (radius - 8)
   const markerTipY = cy - Math.sin(markerA) * (radius - 8)
-  const markerLabelX = cx + Math.cos(markerA) * (radius + 22)
-  const markerLabelY = cy - Math.sin(markerA) * (radius + 22)
+  const markerLabelRawX = cx + Math.cos(markerA) * (radius + 36)
+  const markerLabelX = clamp(markerLabelRawX, 18, width - 18)
+  const markerLabelY = cy - Math.sin(markerA) * (radius + 36)
 
   const ticks = Array.from({ length: Math.floor(maxRpm / 1000) + 1 }, (_, i) => i * 1000)
 

@@ -52,6 +52,7 @@ export interface ShotSnapshot {
   count: number
   profile: ShotProfile | null
   launchMarkerMs?: number | null
+  releaseEventAt?: number | null
   estReason: string
   receivedAt: number
 }

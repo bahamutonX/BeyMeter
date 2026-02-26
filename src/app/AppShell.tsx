@@ -6,16 +6,20 @@ import { Header } from '../ui/Header'
 import { ProfileChart } from '../ui/ProfileChart'
 import { BandChart } from '../ui/BandChart'
 import { NeonPanel } from '../ui/NeonPanel'
-import { SectionHeader } from '../ui/SectionHeader'
 import { MeterGauge } from '../ui/MeterGauge'
 import { RawLogPanel } from '../ui/RawLogPanel'
+import { SettingsConnectView } from '../ui/views/SettingsConnectView'
+import { BeyMeterView } from '../ui/views/BeyMeterView'
+import { ShootAnalysisView } from '../ui/views/ShootAnalysisView'
+import { ShootHistoryView } from '../ui/views/ShootHistoryView'
+import { RawLogView } from '../ui/views/RawLogView'
 import { isCapacitorNativeEnvironment } from '../features/ble/bleEnvironment'
 import {
   computeShotFeatures,
   type ShotFeatures,
 } from '../features/meter/shotFeatures'
 import { clearShots, listShots, saveShot, type PersistentShot } from '../features/meter/shotStorage'
-import { BAND_DEFS, buildBandStats } from '../features/meter/statsBands'
+import { BAND_DEFS, buildBandStats, getBand } from '../features/meter/statsBands'
 import { computeLauncherEfficiencyFromAuc, LAUNCHER_SPECS, type LauncherEfficiency } from '../features/meter/launcherEfficiency'
 import { detectDecaySegment } from '../analysis/decayDetect'
 import { fitFriction } from '../analysis/frictionFit'
@@ -23,12 +27,15 @@ import { computeTorque } from '../analysis/torque'
 import { findFirstPeakIndex } from '../analysis/firstPeak'
 import { aggregateSeries } from '../analysis/aggregateSeries'
 import { getBleService } from '../features/ble/bleSingleton'
-import { clearRawPackets, getRawPackets, pushRawPacket, subscribeRawPackets } from '../features/ble/rawPacketStore'
+import { getRawPackets, pushRawPacket, subscribeRawPackets } from '../features/ble/rawPacketStore'
 import { getEntitlement, setProForDev, subscribeEntitlement } from '../features/entitlement'
 import {
   LAUNCHER_OPTIONS,
   type LauncherType,
 } from '../features/meter/shootType'
+import { SegmentTabs, type SegmentTabItem } from '../ui/shell/SegmentTabs'
+import { ShellFooter } from '../ui/shell/ShellFooter'
+import { ProLockOverlay } from '../ui/shell/ProLockOverlay'
 
 const RECENT_X_MAX_MS = 400
 const RECENT_Y_MAX_SP = 12000
@@ -39,6 +46,7 @@ const DISPLAY_MODE_KEY = 'beymeter:displayMode'
 const NATIVE_CONNECT_TIMEOUT_MS = 15000
 
 type ConnectOverlayState = 'hidden' | 'connecting' | 'success' | 'error'
+type StatusActionModalMode = 'disconnect' | null
 
 interface BleUiState {
   connected: boolean
@@ -53,6 +61,26 @@ export type MainRoute = 'meter' | 'detail' | 'multi'
 
 interface AppShellProps {
   route: MainRoute
+  layoutMode?: 'mobile' | 'desktop' | 'auto'
+}
+
+function detectMobileLayout(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true
+  }
+  const mqPortrait = window.matchMedia('(orientation: portrait)')
+  if (mqPortrait.matches) return true
+  const mqLandscape = window.matchMedia('(orientation: landscape)')
+  if (mqLandscape.matches) return false
+  return window.innerHeight >= window.innerWidth
+}
+
+function detectCompactLandscape(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+  const isLandscape = window.matchMedia('(orientation: landscape)').matches
+  return isLandscape && window.innerHeight <= 500
 }
 
 function getInitialLauncherType(): LauncherType {
@@ -182,6 +210,7 @@ function toSnapshot(shot: PersistentShot): ShotSnapshot {
     count: 0,
     profile: ensureProfile(shot.profile),
     launchMarkerMs: shot.launchMarkerMs ?? null,
+    releaseEventAt: null,
     estReason: 'persisted',
     receivedAt: shot.createdAt,
   }
@@ -217,6 +246,17 @@ function stddev(values: number[]): number {
 
 function toLocalizedErrorMessage(t: (key: string) => string, message: string): string {
   const m = message.toLowerCase()
+  if (
+    m.includes('user cancelled') ||
+    m.includes('user canceled') ||
+    m.includes('the user aborted') ||
+    m.includes('aborterror')
+  ) {
+    return t('ble.userCanceled')
+  }
+  if (m.includes('notallowederror') || m.includes('permission denied')) {
+    return t('ble.permissionDenied')
+  }
   if (m.includes('timeout')) {
     return t('ble.connectTimeout')
   }
@@ -235,7 +275,7 @@ function toLocalizedErrorMessage(t: (key: string) => string, message: string): s
   return message
 }
 
-export function AppShell({ route: _route }: AppShellProps) {
+export function AppShell({ route: _route, layoutMode = 'auto' }: AppShellProps) {
   const { t } = useTranslation()
   void _route
   const bleRef = useRef(getBleService())
@@ -261,20 +301,32 @@ export function AppShell({ route: _route }: AppShellProps) {
 
   const [selectedBandId, setSelectedBandId] = useState(BAND_DEFS[0].id)
   const userSelectedBandRef = useRef(false)
-  const [isMobileLayout, setIsMobileLayout] = useState(
-    () => window.matchMedia('(max-width: 767px)').matches,
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    layoutMode === 'auto' ? detectMobileLayout() : layoutMode === 'mobile',
   )
+  const [isCompactLandscape, setIsCompactLandscape] = useState(() => detectCompactLandscape())
   const mobilePagerRef = useRef<HTMLDivElement | null>(null)
-  const [activeMobilePage, setActiveMobilePage] = useState(0)
-  const [desktopView, setDesktopView] = useState<'meter' | 'detail' | 'raw'>('meter')
-  const [desktopProOverlay, setDesktopProOverlay] = useState<null | 'detail' | 'raw'>(null)
-  const activeMobilePageRef = useRef(0)
+  const [activeMobilePage, setActiveMobilePage] = useState(1)
+  const [desktopView, setDesktopView] = useState<'settings' | 'meter' | 'shot' | 'band' | 'raw'>('meter')
+  const [desktopProOverlay, setDesktopProOverlay] = useState<null | 'shot' | 'band' | 'raw'>(null)
+  const desktopPagerRef = useRef<HTMLDivElement | null>(null)
+  const activeMobilePageRef = useRef(1)
   const [connectNotice, setConnectNotice] = useState<string | null>(null)
   const [modeNotice, setModeNotice] = useState<string | null>(null)
+  const [meterDisplayMode, setMeterDisplayMode] = useState<'gauge' | 'numeric'>('gauge')
+  const [stopwatchRunning, setStopwatchRunning] = useState(false)
+  const [stopwatchStartAt, setStopwatchStartAt] = useState<number | null>(null)
+  const [stopwatchElapsedMs, setStopwatchElapsedMs] = useState(0)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [rawPackets, setRawPackets] = useState(() => getRawPackets())
   const [connectOverlayState, setConnectOverlayState] = useState<ConnectOverlayState>('hidden')
+  const [statusActionModalMode, setStatusActionModalMode] = useState<StatusActionModalMode>(null)
   const wasConnectedRef = useRef(false)
+  const wasBeyAttachedRef = useRef(false)
+  const stopwatchRunningRef = useRef(false)
+  const stopwatchStartAtRef = useRef<number | null>(null)
   const connectAttemptRef = useRef(0)
+  const isProView = isPro && displayMode === 'pro'
 
   const isBayAttached = bleUi.connected && bleUi.isBeyAttached
 
@@ -286,6 +338,14 @@ export function AppShell({ route: _route }: AppShellProps) {
   useEffect(() => {
     bestSpRef.current = bestSp
   }, [bestSp])
+
+  useEffect(() => {
+    stopwatchRunningRef.current = stopwatchRunning
+  }, [stopwatchRunning])
+
+  useEffect(() => {
+    stopwatchStartAtRef.current = stopwatchStartAt
+  }, [stopwatchStartAt])
 
   useEffect(() => {
     window.localStorage.setItem(DISPLAY_MODE_KEY, displayMode)
@@ -302,15 +362,30 @@ export function AppShell({ route: _route }: AppShellProps) {
   }, [activeMobilePage])
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)')
-    const onChange = (event: MediaQueryListEvent) => {
-      setIsMobileLayout(event.matches)
+    if (layoutMode === 'auto') {
+      const updateLayout = () => {
+        setIsMobileLayout(detectMobileLayout())
+        setIsCompactLandscape(detectCompactLandscape())
+      }
+      if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        const mqPortrait = window.matchMedia('(orientation: portrait)')
+        const mqLandscape = window.matchMedia('(orientation: landscape)')
+        mqPortrait.addEventListener('change', updateLayout)
+        mqLandscape.addEventListener('change', updateLayout)
+        window.addEventListener('resize', updateLayout)
+        window.addEventListener('orientationchange', updateLayout)
+        updateLayout()
+        return () => {
+          mqPortrait.removeEventListener('change', updateLayout)
+          mqLandscape.removeEventListener('change', updateLayout)
+          window.removeEventListener('resize', updateLayout)
+          window.removeEventListener('orientationchange', updateLayout)
+        }
+      }
+      return
     }
-    media.addEventListener('change', onChange)
-    return () => {
-      media.removeEventListener('change', onChange)
-    }
-  }, [t])
+    setIsMobileLayout(layoutMode === 'mobile')
+  }, [layoutMode])
 
   useEffect(() => {
     if (!isMobileLayout) return
@@ -318,7 +393,7 @@ export function AppShell({ route: _route }: AppShellProps) {
     if (!node) return
     const onScroll = () => {
       const width = node.clientWidth || 1
-      const next = Math.max(0, Math.min(2, Math.round(node.scrollLeft / width)))
+      const next = Math.max(0, Math.min(4, Math.round(node.scrollLeft / width)))
       if (next !== activeMobilePageRef.current) {
         setActiveMobilePage(next)
       }
@@ -327,6 +402,47 @@ export function AppShell({ route: _route }: AppShellProps) {
     onScroll()
     return () => node.removeEventListener('scroll', onScroll)
   }, [isMobileLayout])
+
+  useEffect(() => {
+    if (isMobileLayout) return
+    const node = desktopPagerRef.current
+    if (!node) return
+    const onScroll = () => {
+      const width = node.clientWidth || 1
+      const next = Math.max(0, Math.min(4, Math.round(node.scrollLeft / width)))
+      const nextView = (['settings', 'meter', 'shot', 'band', 'raw'] as const)[next]
+      if (!nextView) return
+      if (!isProView && nextView !== 'settings' && nextView !== 'meter') {
+        setDesktopProOverlay(nextView as 'shot' | 'band' | 'raw')
+        node.scrollTo({ left: width, behavior: 'smooth' })
+        setDesktopView('meter')
+        return
+      }
+      setDesktopView(nextView)
+    }
+    node.addEventListener('scroll', onScroll, { passive: true })
+    return () => node.removeEventListener('scroll', onScroll)
+  }, [isMobileLayout, isProView])
+
+  useEffect(() => {
+    if (!isMobileLayout) return
+    const node = mobilePagerRef.current
+    if (!node) return
+    if (node.scrollLeft === 0) {
+      const width = node.clientWidth || window.innerWidth
+      node.scrollTo({ left: width, behavior: 'auto' })
+      setActiveMobilePage(1)
+    }
+  }, [isMobileLayout])
+
+  useEffect(() => {
+    if (isMobileLayout) return
+    const node = desktopPagerRef.current
+    if (!node) return
+    const width = node.clientWidth || window.innerWidth
+    const idx = ({ settings: 0, meter: 1, shot: 2, band: 3, raw: 4 } as const)[desktopView]
+    node.scrollTo({ left: idx * width, behavior: 'auto' })
+  }, [desktopView, isMobileLayout])
 
   useEffect(() => {
     return subscribeEntitlement(() => {
@@ -342,6 +458,15 @@ export function AppShell({ route: _route }: AppShellProps) {
 
     ble.setHandlers({
       onState: (state) => {
+        const nextAttached = state.connected ? state.beyAttached : false
+        if (state.connected && wasBeyAttachedRef.current && !nextAttached) {
+          const now = performance.now()
+          setStopwatchStartAt(now)
+          setStopwatchElapsedMs(0)
+          setStopwatchRunning(true)
+        }
+        wasBeyAttachedRef.current = nextAttached
+
         setBleUi((prev) => ({
           ...prev,
           connected: state.connected,
@@ -354,6 +479,20 @@ export function AppShell({ route: _route }: AppShellProps) {
         }))
       },
       onShot: (snapshot: ShotSnapshot) => {
+        // Back-correct start time using A0(0x00) timestamp to reduce perceived start delay.
+        const now = performance.now()
+        const prevStart = stopwatchStartAtRef.current
+        let correctedStart = prevStart ?? now
+        if (snapshot.releaseEventAt && snapshot.releaseEventAt > 0) {
+          const lagMs = Math.max(0, snapshot.receivedAt - snapshot.releaseEventAt)
+          correctedStart = now - lagMs
+        } else if (!stopwatchRunningRef.current || prevStart === null) {
+          correctedStart = now
+        }
+        setStopwatchStartAt(correctedStart)
+        setStopwatchElapsedMs(Math.max(0, now - correctedStart))
+        setStopwatchRunning(true)
+
         if (snapshot.maxSp > bestSpRef.current) {
           setBestSp(snapshot.maxSp)
           window.localStorage.setItem(BEST_SP_KEY, String(snapshot.maxSp))
@@ -449,8 +588,12 @@ export function AppShell({ route: _route }: AppShellProps) {
       return
     }
     setConnectOverlayState('hidden')
+    setStatusActionModalMode(null)
     setConnectNotice(t('mobile.connectedNotice'))
-  }, [bleUi.connected, t])
+    if (isMobileLayout) {
+      moveToMobilePage(1)
+    }
+  }, [bleUi.connected, isMobileLayout, t])
 
   useEffect(() => {
     if (!bleUi.lastError) return
@@ -478,10 +621,6 @@ export function AppShell({ route: _route }: AppShellProps) {
   const latestPersisted = useMemo(
     () => (latest ? persistedShots.find((s) => s.createdAt === latest.receivedAt) ?? null : null),
     [latest, persistedShots],
-  )
-  const launcherOptions = useMemo(
-    () => LAUNCHER_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) })),
-    [t],
   )
   const latestFeatures = useMemo(
     () => latestPersisted?.features ?? (latestProfile ? computeShotFeatures(latestProfile) : null),
@@ -572,6 +711,24 @@ export function AppShell({ route: _route }: AppShellProps) {
   )
 
   const bandStats = useMemo(() => buildBandStats(persistedShots, (s) => s.yourSp), [persistedShots])
+  const bandLauncherCounts = useMemo(() => {
+    const base = Object.fromEntries(
+      BAND_DEFS.map((band) => [
+        band.id,
+        { string: 0, winder: 0, longWinder: 0, total: 0 },
+      ]),
+    ) as Record<string, { string: number; winder: number; longWinder: number; total: number }>
+    for (const shot of persistedShots) {
+      const bandId = getBand(shot.yourSp)
+      if (!bandId || !base[bandId]) continue
+      const launcher = (shot.launcherType ?? 'string') as LauncherType
+      if (launcher === 'string' || launcher === 'winder' || launcher === 'longWinder') {
+        base[bandId][launcher] += 1
+      }
+      base[bandId].total += 1
+    }
+    return base
+  }, [persistedShots])
   const selectedBandShots = useMemo(() => {
     const def = BAND_DEFS.find((d) => d.id === selectedBandId)
     if (!def) return []
@@ -764,9 +921,7 @@ export function AppShell({ route: _route }: AppShellProps) {
     connectAttemptRef.current = attemptId
     setConnectNotice(null)
     setBleUi((prev) => ({ ...prev, lastError: null, connecting: true }))
-    if (isNative) {
-      setConnectOverlayState('connecting')
-    }
+    setConnectOverlayState('connecting')
     try {
       const connectPromise = bleRef.current.connect()
       if (isNative) {
@@ -783,17 +938,13 @@ export function AppShell({ route: _route }: AppShellProps) {
       if (connectAttemptRef.current !== attemptId) {
         return
       }
-      if (isNative) {
-        bleRef.current.disconnect()
-      }
+      bleRef.current.disconnect()
       setBleUi((prev) => ({
         ...prev,
         lastError: `${t('ble.connectFailedSimple')} ${toLocalizedErrorMessage(t, error instanceof Error ? error.message : String(error))}`,
       }))
-      if (isNative) {
-        setConnectOverlayState('error')
-        window.setTimeout(() => setConnectOverlayState('hidden'), 1200)
-      }
+      setConnectOverlayState('error')
+      window.setTimeout(() => setConnectOverlayState('hidden'), 1200)
     } finally {
       if (connectAttemptRef.current === attemptId) {
         setBleUi((prev) => ({ ...prev, connecting: false }))
@@ -810,6 +961,7 @@ export function AppShell({ route: _route }: AppShellProps) {
 
   function handleDisconnect() {
     setConnectOverlayState('hidden')
+    setStatusActionModalMode(null)
     setConnectNotice(null)
     setBleUi((prev) => ({
       ...prev,
@@ -832,11 +984,12 @@ export function AppShell({ route: _route }: AppShellProps) {
     }
   }
 
-  async function handleResetAll() {
-    const ok = window.confirm(t('history.confirmReset'))
-    if (!ok) {
-      return
-    }
+  function handleResetAll() {
+    setShowResetConfirm(true)
+  }
+
+  async function handleResetAllConfirmed() {
+    setShowResetConfirm(false)
     await clearShots()
     setPersistedShots([])
     setViewState(storeRef.current.hydrateHistory([]))
@@ -844,37 +997,38 @@ export function AppShell({ route: _route }: AppShellProps) {
     setSelectedBandId(BAND_DEFS[0].id)
   }
 
-  function handleResetBest() {
-    setBestSp(0)
-    window.localStorage.setItem(BEST_SP_KEY, '0')
+  function handleResetAllCancel() {
+    setShowResetConfirm(false)
   }
 
   function handleToggleProMode() {
     if (!isPro) {
       setProForDev(true)
       setDisplayMode('pro')
-      setDesktopView('detail')
+      setDesktopView('shot')
       setModeNotice(t('pro.enabledNotice'))
       return
     }
     setDisplayMode((prev) => {
       const next = prev === 'pro' ? 'free' : 'pro'
-      setDesktopView(next === 'pro' ? 'detail' : 'meter')
+      setDesktopView(next === 'pro' ? 'shot' : 'meter')
       setModeNotice(next === 'pro' ? t('pro.proViewEnabledNotice') : t('pro.freeViewEnabledNotice'))
       return next
     })
   }
 
-  function handleDesktopSwitch(target: 'meter' | 'detail' | 'raw') {
-    if (target === 'meter') {
-      setDesktopView('meter')
-      setDesktopProOverlay(null)
+  function handleDesktopSwitch(target: 'settings' | 'meter' | 'shot' | 'band' | 'raw') {
+    if (target !== 'settings' && target !== 'meter' && !isProView) {
+      setDesktopProOverlay(target as 'shot' | 'band' | 'raw')
       return
     }
-    if (!isProView) {
-      setDesktopProOverlay(target)
-      return
+    const node = desktopPagerRef.current
+    const idx = ({ settings: 0, meter: 1, shot: 2, band: 3, raw: 4 } as const)[target]
+    if (node) {
+      const width = node.clientWidth || window.innerWidth
+      node.scrollTo({ left: idx * width, behavior: 'smooth' })
     }
+    setDesktopProOverlay(null)
     setDesktopView(target)
   }
 
@@ -890,7 +1044,7 @@ export function AppShell({ route: _route }: AppShellProps) {
       setDisplayMode('pro')
       setModeNotice(t('pro.proViewEnabledNotice'))
     }
-    setDesktopView(target === 'raw' ? 'raw' : 'detail')
+    window.setTimeout(() => handleDesktopSwitch(target), 0)
   }
 
   function handleDesktopProCancel() {
@@ -898,8 +1052,27 @@ export function AppShell({ route: _route }: AppShellProps) {
     setDesktopView('meter')
   }
 
+  function handleStatusActionOpen() {
+    if (bleUi.connected) {
+      setStatusActionModalMode('disconnect')
+      return
+    }
+    void handleConnect()
+  }
+
+  function handleStatusActionCancel() {
+    setStatusActionModalMode(null)
+  }
+
+  function handleStatusActionConfirm() {
+    if (statusActionModalMode === 'disconnect') {
+      handleDisconnect()
+    }
+    setStatusActionModalMode(null)
+  }
+
   function moveToMobilePage(page: number) {
-    const safePage = Math.max(0, Math.min(2, page))
+    const safePage = Math.max(0, Math.min(4, page))
     const node = mobilePagerRef.current
     if (!node) return
     const width = node.clientWidth || window.innerWidth
@@ -913,7 +1086,19 @@ export function AppShell({ route: _route }: AppShellProps) {
     return () => window.clearTimeout(timer)
   }, [showBestUpdated])
 
-  const isProView = isPro && displayMode === 'pro'
+  useEffect(() => {
+    if (!stopwatchRunning || stopwatchStartAt === null) return
+    const timer = window.setInterval(() => {
+      setStopwatchElapsedMs(Math.max(0, performance.now() - stopwatchStartAt))
+    }, 50)
+    return () => window.clearInterval(timer)
+  }, [stopwatchRunning, stopwatchStartAt])
+
+  function handleStopwatchStop() {
+    if (!stopwatchRunning || stopwatchStartAt === null) return
+    setStopwatchElapsedMs(Math.max(0, performance.now() - stopwatchStartAt))
+    setStopwatchRunning(false)
+  }
 
   const headerNode = (
     <Header
@@ -921,135 +1106,180 @@ export function AppShell({ route: _route }: AppShellProps) {
       connecting={bleUi.connecting}
       disconnecting={bleUi.disconnecting}
       beyAttached={isBayAttached}
-      lastError={bleUi.lastError}
-      launcherType={launcherType}
-      launcherOptions={launcherOptions}
       isPro={isPro}
       displayMode={displayMode}
-      onLauncherTypeChange={setLauncherType}
-      onConnect={() => void handleConnect()}
-      onDisconnect={handleDisconnect}
+      onStatusAction={handleStatusActionOpen}
       onTogglePro={handleToggleProMode}
       modeNotice={!isMobileLayout ? modeNotice : null}
-      connectNotice={!isMobileLayout ? connectNotice : null}
     />
   )
 
+  const tabItems = [
+    { page: 0, view: 'settings' as const, titleKey: 'mobile.settingsTitle' },
+    { page: 1, view: 'meter' as const, titleKey: 'nav.meter' },
+    { page: 2, view: 'shot' as const, titleKey: 'detailTabs.shot' },
+    { page: 3, view: 'band' as const, titleKey: 'detailTabs.band' },
+    { page: 4, view: 'raw' as const, titleKey: 'pro.rawLogMode' },
+  ]
+  const viewItems = tabItems.map((tab, index) => ({
+    ...tab,
+    label: index + 1,
+  }))
+
+  const renderLockedOverlay = () => (
+    <ProLockOverlay
+      title={t('pro.lockTitle')}
+      description={t('pro.lockDescription')}
+      unlockCta={t('pro.unlockCta')}
+      cancelLabel={t('common.cancel')}
+      onUnlock={handleToggleProMode}
+      onCancel={() => moveToMobilePage(1)}
+    />
+  )
+
+  const mobileTabs: SegmentTabItem[] = viewItems.map((item) => ({
+    key: String(item.page),
+    title: t(item.titleKey),
+    icon: renderTabIcon(item.view),
+  }))
+
+  const desktopTabs: SegmentTabItem[] = viewItems.map((item) => ({
+    key: item.view,
+    title: t(item.titleKey),
+    icon: renderTabIcon(item.view),
+  }))
+
+  function renderTabIcon(view: 'settings' | 'meter' | 'shot' | 'band' | 'raw') {
+    switch (view) {
+      case 'settings':
+        return (
+          <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+          </svg>
+        )
+      case 'meter':
+        return (
+          <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M12 12l4-2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        )
+      case 'shot':
+        return (
+          <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 8h5l4 8h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="6.5" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="17.5" cy="16" r="1.3" fill="currentColor" />
+          </svg>
+        )
+      case 'band':
+        return (
+          <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4 18h4v3H4v-3Zm0-7h4v5H4v-5Zm0-6h4v4H4V5Zm6 9h4v7h-4v-7Zm0-9h4v7h-4V5Zm6 12h4v4h-4v-4Zm0-12h4v10h-4V5Z" />
+          </svg>
+        )
+      default:
+        return (
+          <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        )
+    }
+  }
+
   const latestMeterSp = latest?.maxSp ?? 0
+  const stopwatchTotalSeconds = Math.max(0, stopwatchElapsedMs / 1000)
+  const stopwatchMinutes = Math.floor(stopwatchTotalSeconds / 60)
+  const stopwatchSeconds = Math.floor(stopwatchTotalSeconds % 60)
+  const stopwatchCenti = Math.floor((stopwatchTotalSeconds - Math.floor(stopwatchTotalSeconds)) * 100)
+  const stopwatchText = `${String(stopwatchMinutes).padStart(2, '0')}:${String(stopwatchSeconds).padStart(2, '0')}.${String(stopwatchCenti).padStart(2, '0')}`
+  const meterDisplayModeEffective: 'gauge' | 'numeric' = isCompactLandscape ? 'numeric' : meterDisplayMode
   const meterViewNode = (
-    <section className="section-shell meter-shell">
-      <div className="section-head-row">
-        <SectionHeader
-          en={t('meter.en')}
-          title={t('meter.title')}
-          description={t('meter.description')}
-        />
-      </div>
-      <NeonPanel className="meter-main-panel">
-        {showBestUpdated ? <div className="best-badge">{t('meter.maxUpdated')}</div> : null}
-        <div className="meter-gauge-wrap">
-          <MeterGauge
-            value={latestMeterSp}
-            best={bestSp}
-            maxRpm={METER_MAX_RPM}
-            bestLabel={t('meter.deviceBest')}
-          />
-        </div>
-        <div className="meter-actions">
-          <button type="button" className="mini-btn subtle" onClick={handleResetBest}>
-            {t('meter.resetBest')}
-          </button>
-          <button type="button" className="mini-btn subtle" onClick={() => void handleResetAll()}>
-            {t('meter.resetAll')}
-          </button>
-        </div>
-      </NeonPanel>
-    </section>
+    <BeyMeterView
+      en={t('meter.en') || 'METER'}
+      title={t('meter.title')}
+      description={t('meter.description')}
+      toggleButton={
+        meterDisplayModeEffective === 'numeric' && isCompactLandscape
+          ? null
+          : (
+            <button
+              type="button"
+              className="mini-btn subtle"
+              onClick={() => setMeterDisplayMode((prev) => (prev === 'gauge' ? 'numeric' : 'gauge'))}
+            >
+              {meterDisplayMode === 'gauge' ? t('meter.viewNumeric') : t('meter.viewGauge')}
+            </button>
+            )
+      }
+      meterContent={(
+        <>
+          {showBestUpdated ? <div className="best-badge">{t('meter.maxUpdated')}</div> : null}
+          <div className="meter-center-stack">
+            <div className="meter-visual-slot">
+              <div className="meter-visual-inner">
+                {meterDisplayModeEffective === 'gauge' ? (
+                  <div className="meter-gauge-wrap">
+                    <MeterGauge
+                      value={latestMeterSp}
+                      best={bestSp}
+                      maxRpm={METER_MAX_RPM}
+                      bestLabel={t('meter.deviceBest')}
+                    />
+                  </div>
+                ) : (
+                  <div className="meter-numeric-wrap">
+                    <div className="meter-numeric-value">
+                      {latestMeterSp}
+                      <span className="meter-numeric-unit"> rpm</span>
+                    </div>
+                    <div className="meter-numeric-max">MAX: {bestSp} rpm</div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="meter-stopwatch">
+              <div className="meter-stopwatch-value">{stopwatchText}</div>
+              <button
+                type="button"
+                className="mini-btn subtle meter-stopwatch-btn"
+                onClick={handleStopwatchStop}
+                disabled={!stopwatchRunning}
+              >
+                {t('meter.stopwatchStop')}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    />
   )
 
   const recentNode = (
-    <section className="section-shell recent-shell">
-      {isMobileLayout ? (
-        <div className="section-head-row recent-head-row">
-          <SectionHeader
-            en={t('recent.en')}
-            title={t('recent.title')}
-            description={t('recent.description')}
-          />
-        </div>
-      ) : null}
-      <div className="current-section">
-        <NeonPanel className="current-left">
-          <article className="main-card">
-            <h2>{t('recent.recordSp')}</h2>
-            <div className="main-value">
-              {latest ? (
-                <>
-                  {latest.yourSp}
-                  <span className="value-unit">rpm</span>
-                </>
-              ) : (
-                '--'
-              )}
-            </div>
-            <div className="recent-analysis-block">
-              <div className="recent-analysis-group-title">{t('recent.shotPowerAnalysisTitle')}</div>
-              <div className="recent-analysis-row">
-                <span>{t('recent.peakShotPower')}</span>
-                <strong>
-                  {latest && latestSpPeakValue !== null
-                    ? `${latestPeakTimeMs} ms, ${latestSpPeakValue} rpm`
-                    : t('common.none')}
-                </strong>
-              </div>
-              <div className="recent-analysis-row">
-                <span>{t('recent.aucToPeak')}</span>
-                <strong>
-                  {latestFeatures
-                    ? Number((latestFeatures.auc_0_peak ?? 0).toFixed(2))
-                    : t('common.none')}
-                </strong>
-              </div>
-              <div className="recent-analysis-row">
-                <span>{t('recent.effectiveLength')}</span>
-                <strong>
-                  {latestEfficiency
-                    ? `${latestEfficiency.effLengthCm.toFixed(1)}cm / ${latestEfficiency.lengthCm.toFixed(1)}cm (${latestEfficiency.effPercent.toFixed(0)}%)`
-                    : t('common.none')}
-                </strong>
-              </div>
-              <div className="recent-analysis-group-title">{t('recent.torqueAnalysisTitle')}</div>
-              <div className="recent-analysis-row">
-                <span>{t('recent.peakInputTorque')}</span>
-                <strong>
-                  {latestTorquePeakTimeMs !== null
-                    ? `${latestTorquePeakTimeMs} ms, ${latestMaxTorqueText}`
-                    : t('common.none')}
-                </strong>
-              </div>
-              <div className="recent-analysis-row">
-                <span>{t('recent.torquePeakPosition')}</span>
-                <strong>
-                  {latestTorquePeakTimeMs !== null && latestPeakTimeMs > 0
-                    ? `${Number(((latestTorquePeakTimeMs / latestPeakTimeMs) * 100).toFixed(1))}%`
-                    : t('common.none')}
-                </strong>
-              </div>
-              <div className="recent-analysis-row emphasize">
-                <span>{t('recent.shootTypeResult')}</span>
-                <strong>{latest ? t(`shootType3.${latestShootType3}`) : t('common.none')}</strong>
-              </div>
-            </div>
-          </article>
-        </NeonPanel>
-
-        <NeonPanel className="current-right">
+    <ShootAnalysisView
+      en={t('recent.en')}
+      title={t('recent.title')}
+      description={t('recent.description')}
+      leftContent={(
+        <article className="main-card">
+          <h2>{t('recent.shotPower')}</h2>
+          <div className="main-value record-main-value">
+            {latest ? (
+              <>
+                {latest.yourSp}
+                <span className="value-unit record-main-unit">rpm</span>
+              </>
+            ) : (
+              '--'
+            )}
+          </div>
+        </article>
+      )}
+      rightContent={(
+        <>
           <div className="chart-head-row">
             <h3>{t('recent.waveformTitle')}</h3>
-            <div className="shot-meta">
-              <span>{t('recent.peakShotPower')}: {latest ? `${latestPeakTimeMs} ms / ${latest.maxSp} rpm` : t('common.none')}</span>
-              <span>{t('recent.peakInputTorque')}: {latestTorquePeakTimeMs !== null ? `${latestTorquePeakTimeMs} ms / ${latestMaxTorqueText}` : t('common.none')}</span>
-            </div>
           </div>
           <ProfileChart
             profile={latestProfile}
@@ -1064,35 +1294,75 @@ export function AppShell({ route: _route }: AppShellProps) {
             fixedXTicks={[0, 100, 200, 300, 400]}
             fixedPrimaryYTicks={[0, 3000, 6000, 9000, 12000]}
           />
-        </NeonPanel>
-      </div>
-    </section>
+          <div className="recent-detail-block">
+            <h4>{t('history.detailTitle')}</h4>
+            <div className="detail-grid recent-detail-grid">
+              <div className="detail-col">
+                <h5>{t('recent.shotPowerAnalysisTitle')}</h5>
+                <div className="compact-metric">
+                  <span>{t('recent.peakShotPower')}</span>
+                  <strong>
+                    {latest && latestSpPeakValue !== null
+                      ? `${latestPeakTimeMs} ms, ${latestSpPeakValue} rpm`
+                      : t('common.none')}
+                  </strong>
+                </div>
+                <div className="compact-metric">
+                  <span>{t('recent.aucToPeak')}</span>
+                  <strong>
+                    {latestFeatures
+                      ? Number((latestFeatures.auc_0_peak ?? 0).toFixed(2))
+                      : t('common.none')}
+                  </strong>
+                </div>
+                <div className="compact-metric">
+                  <span>{t('recent.effectiveLength')}</span>
+                  <strong>
+                    {latestEfficiency
+                      ? `${latestEfficiency.effLengthCm.toFixed(1)}cm / ${latestEfficiency.lengthCm.toFixed(1)}cm (${latestEfficiency.effPercent.toFixed(0)}%)`
+                      : t('common.none')}
+                  </strong>
+                </div>
+                <p className="detail-help">{t('history.effectiveLengthHint')}</p>
+              </div>
+              <div className="detail-col">
+                <h5>{t('recent.torqueAnalysisTitle')}</h5>
+                <div className="compact-metric">
+                  <span>{t('recent.peakInputTorque')}</span>
+                  <strong>
+                    {latestTorquePeakTimeMs !== null
+                      ? `${latestTorquePeakTimeMs} ms, ${latestMaxTorqueText}`
+                      : t('common.none')}
+                  </strong>
+                </div>
+                <div className="compact-metric">
+                  <span>{t('recent.torquePeakPosition')}</span>
+                  <strong>
+                    {latestTorquePeakTimeMs !== null && latestPeakTimeMs > 0
+                      ? `${Number(((latestTorquePeakTimeMs / latestPeakTimeMs) * 100).toFixed(1))}%`
+                      : t('common.none')}
+                  </strong>
+                </div>
+                <p className="detail-help">{t('history.torquePeakPositionHint')}</p>
+                <div className="compact-metric emphasize">
+                  <span>{t('recent.shootTypeResult')}</span>
+                  <strong>{latest ? t(`shootType3.${latestShootType3}`) : t('common.none')}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    />
   )
 
   const historyNode = (
-    <section className="section-shell history-shell">
-      {isMobileLayout ? (
-        <div className="section-head-row">
-          <SectionHeader
-            en={t('history.en')}
-            title={t('history.title')}
-            description={t('history.description')}
-          />
-          <div className="section-head-actions section-head-actions-pro">
-            <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
-              {t('history.reset')}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="section-head-actions section-head-actions-pro history-only-actions">
-          <button className="mini-btn subtle history-reset-btn" onClick={() => void handleResetAll()} type="button">
-            {t('history.reset')}
-          </button>
-        </div>
-      )}
-      <div className="history-section">
-        <NeonPanel className="history-left">
+    <ShootHistoryView
+      en={t('history.en')}
+      title={t('history.title')}
+      description={t('history.description')}
+      leftPanel={(
+        <>
           <div className="panel-head">
             <h3>{t('history.bandTitle')}</h3>
           </div>
@@ -1102,6 +1372,23 @@ export function AppShell({ route: _route }: AppShellProps) {
               const active = selectedBandId === band.id
               const count = stat?.count ?? 0
               const ratio = Math.round((count / maxBandCount) * 100)
+              const launcherCounts = bandLauncherCounts[band.id] ?? {
+                string: 0,
+                winder: 0,
+                longWinder: 0,
+                total: 0,
+              }
+              const parts: string[] = []
+              if (launcherCounts.string > 0) {
+                parts.push(`S ${launcherCounts.string}${t('labels.shots')}`)
+              }
+              if (launcherCounts.winder > 0) {
+                parts.push(`W ${launcherCounts.winder}${t('labels.shots')}`)
+              }
+              if (launcherCounts.longWinder > 0) {
+                parts.push(`L/D ${launcherCounts.longWinder}${t('labels.shots')}`)
+              }
+              parts.push(`${t('history.total')}${launcherCounts.total}${t('labels.shots')}`)
               return (
                 <li key={band.id}>
                   <button
@@ -1118,13 +1405,16 @@ export function AppShell({ route: _route }: AppShellProps) {
                       <span className="inline-unit"> rpm</span>
                     </span>
                     <span className="band-count-wrap">
-                      <span className="band-count">{count}{t('history.countUnit')}</span>
+                      <span className="band-count">{parts.join(' / ')}</span>
                     </span>
                   </button>
                 </li>
               )
             })}
           </ul>
+          <div className="band-legend">
+            S: {t('launcher.string')} / W: {t('launcher.winder')} / L/D: {t('launcher.longWinder')}
+          </div>
           <div className="history-summary-row history-summary-left">
             {t('history.summary', {
               total: historySummary.total,
@@ -1133,18 +1423,15 @@ export function AppShell({ route: _route }: AppShellProps) {
               stddev: historySummary.stddev
             })}
           </div>
-        </NeonPanel>
-
-        <NeonPanel className="history-right">
+        </>
+      )}
+      rightPanel={(
+        <>
           <div className="chart-head-row">
             <h3>
               {t('history.waveformBand', { bandId: selectedBandId })}
               <span className="inline-unit"> rpm</span>
             </h3>
-            <div className="shot-meta">
-              <span>{t('history.peakShotPowerAvg')}: {selectedBandSpMeta ? `${selectedBandSpMeta.peakTimeMs} ms / ${Math.round(selectedBandSpMeta.maxValue)} rpm` : t('common.none')}</span>
-              <span>{t('history.peakInputTorqueAvg')}: {selectedBandTauMeta ? `${selectedBandTauMeta.peakTimeMs} ms / ${selectedBandTauMeta.maxValue} rpm/ms` : t('common.none')}</span>
-            </div>
           </div>
           <BandChart
             shots={selectedBandShots}
@@ -1255,65 +1542,96 @@ export function AppShell({ route: _route }: AppShellProps) {
               </div>
             </div>
           </div>
-        </NeonPanel>
-      </div>
-    </section>
+        </>
+      )}
+    />
   )
 
   const rawViewNode = (
-    <section className="section-shell history-shell">
-      <div className="history-section rawlog-history-shell">
-        <NeonPanel className="history-right rawlog-history-panel">
-          <RawLogPanel packets={rawPackets} onClear={clearRawPackets} />
-        </NeonPanel>
-      </div>
-    </section>
+    <RawLogView
+      en={t('rawlog.en')}
+      title={t('rawlog.title')}
+      description={t('rawlog.description')}
+      content={<RawLogPanel packets={rawPackets} />}
+    />
   )
 
-  const desktopContent =
-    desktopView === 'detail'
-      ? (
-          <>
-            {recentNode}
-            {historyNode}
-          </>
-        )
-      : desktopView === 'raw'
-        ? rawViewNode
-        : (
-            <>
-              {meterViewNode}
-            </>
-          )
+  const desktopActionLabel = bleUi.connecting
+    ? t('common.connecting')
+    : bleUi.disconnecting
+      ? t('common.disconnecting')
+      : bleUi.connected
+        ? t('common.disconnect')
+        : t('common.connect')
 
-  const desktopMainClass = `layout app-mobile app-compact neon-theme${!isMobileLayout && !isProView ? ' simple-desktop' : ''}`
-  const desktopTabHeaderMeta =
-    desktopView === 'meter'
-      ? {
-          en: t('meter.en'),
-          title: t('meter.title'),
-          description: t('meter.description'),
-        }
-      : desktopView === 'detail'
-        ? {
-            en: t('recent.en'),
-            title: t('nav.detail'),
-            description: t('recent.description'),
-          }
-        : {
-            en: t('rawlog.en'),
-            title: t('rawlog.title'),
-            description: t('rawlog.description'),
-          }
+  const settingsViewNode = (
+    <SettingsConnectView
+      en={t('settings.en')}
+      title={t('mobile.settingsTitle')}
+      launcherBlock={(
+        <div className="mobile-launcher-group">
+          <div className="mobile-launcher-label">{t('launcher.selectPrompt')}</div>
+          <div className="mobile-launcher-buttons">
+            {LAUNCHER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`mobile-launcher-btn ${launcherType === opt.value ? 'active' : ''}`}
+                onClick={() => setLauncherType(opt.value)}
+                aria-pressed={launcherType === opt.value}
+              >
+                {t(opt.labelKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      connectBlock={(
+        <>
+          <div className="mobile-connect-guide settings-connect-guide">{t('mobile.connectGuide')}</div>
+          <div className="mobile-top-actions settings-connect-actions">
+            <button
+              className="mobile-connect-btn"
+              onClick={bleUi.connected ? handleDisconnect : () => void handleConnect()}
+              type="button"
+              disabled={bleUi.connecting || bleUi.disconnecting}
+            >
+              {desktopActionLabel}
+            </button>
+          </div>
+        </>
+      )}
+      resetBlock={(
+        <div className="mobile-reset-footer mobile-reset-in-settings settings-reset-bottom">
+          <p className="mobile-reset-help">{t('settings.resetHelp')}</p>
+          <button
+            type="button"
+            className="mini-btn subtle mobile-reset-btn"
+            onClick={handleResetAll}
+          >
+            {t('history.reset')}
+          </button>
+        </div>
+      )}
+      errorNode={bleUi.lastError ? <div className="mobile-error-box">{bleUi.lastError}</div> : null}
+    />
+  )
+
+  function renderViewNode(view: 'settings' | 'meter' | 'shot' | 'band' | 'raw') {
+    if (view === 'settings') return settingsViewNode
+    if (view === 'meter') return meterViewNode
+    if (view === 'shot') return recentNode
+    if (view === 'band') return historyNode
+    return rawViewNode
+  }
+
+  function shouldLockView(view: 'settings' | 'meter' | 'shot' | 'band' | 'raw') {
+    return !isProView && view !== 'settings' && view !== 'meter'
+  }
+
+  const desktopMainClass = `layout app-mobile app-compact neon-theme${!isMobileLayout && !isProView ? ' simple-desktop' : ''}${isCompactLandscape ? ' compact-landscape-meter' : ''}`
 
   if (isMobileLayout) {
-    const actionLabel = bleUi.connecting
-      ? t('common.connecting')
-      : bleUi.disconnecting
-        ? t('common.disconnecting')
-        : bleUi.connected
-          ? t('common.disconnect')
-          : t('common.connect')
     const connectionLabel = bleUi.connecting
       ? t('ble.connecting')
       : bleUi.disconnecting
@@ -1329,117 +1647,114 @@ export function AppShell({ route: _route }: AppShellProps) {
         <header className="mobile-titlebar">
           <div className="mobile-title-main">
             <h1 className="mobile-title">{isProView ? t('app.titlePro') : t('app.titleSimple')}</h1>
-            <a className="app-credit" href="https://x.com/bahamutonX" target="_blank" rel="noreferrer">
-              by @bahamutonX
-            </a>
             <button type="button" className="mini-btn subtle pro-switch-btn-mobile" onClick={handleToggleProMode}>
               {mobileModeActionLabel}
             </button>
             {modeNotice ? <span className="mode-switch-notice">{modeNotice}</span> : null}
           </div>
           <div className="status-row mobile-status-inline">
-            <div className="status-item compact">
-              <span className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`} />
-              <span>{connectionLabel}</span>
-            </div>
-            <div className="status-item compact">
-              <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
-              <span>{attachLabel}</span>
+            <div className="mobile-status-stack">
+              <button
+                type="button"
+                className="status-touch-btn compact"
+                onClick={handleStatusActionOpen}
+                disabled={bleUi.connecting || bleUi.disconnecting}
+              >
+                <div className="status-item compact">
+                  <span className={`status-dot ${bleUi.connected || bleUi.connecting ? 'on' : 'off'} ${bleUi.connecting || bleUi.disconnecting ? 'connecting' : 'default'}`} />
+                  <span>{connectionLabel}</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="status-touch-btn compact"
+                onClick={handleStatusActionOpen}
+                disabled={bleUi.connecting || bleUi.disconnecting}
+              >
+                <div className="status-item compact">
+                  <span className={`status-dot ${isBayAttached ? 'on' : 'off'} default`} />
+                  <span>{attachLabel}</span>
+                </div>
+              </button>
             </div>
             {bleUi.connected ? <div className="status-ready">{t('ble.readyToShoot')}</div> : null}
           </div>
         </header>
+        <SegmentTabs
+          className="mobile-segment-switch desktop-segment-switch"
+          items={mobileTabs}
+          activeKey={String(activeMobilePage)}
+          onChange={(key) => moveToMobilePage(Number(key))}
+          buttonClassName="mobile-segment-btn"
+          ariaLabel={t('nav.tabsAria')}
+        />
         <div className="mobile-pager" ref={mobilePagerRef}>
-          <section className="mobile-page">
-            <section className="section-shell mobile-meter-connect-shell">
-              <SectionHeader en={t('settings.en')} title={t('mobile.settingsTitle')} description={t('mobile.settingsDesc')} />
-              <NeonPanel className="mobile-settings-panel">
-                <div className="mobile-launcher-group">
-                  <div className="mobile-launcher-label">{t('launcher.selectPrompt')}</div>
-                  <div className="mobile-launcher-buttons">
-                    {LAUNCHER_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={`mobile-launcher-btn ${launcherType === opt.value ? 'active' : ''}`}
-                        onClick={() => setLauncherType(opt.value)}
-                        aria-pressed={launcherType === opt.value}
-                      >
-                        {t(opt.labelKey)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mobile-connect-guide">{t('mobile.connectGuide')}</div>
-                <div className="mobile-top-actions">
-                  <button
-                    className="mobile-connect-btn"
-                    onClick={bleUi.connected ? handleDisconnect : () => void handleConnect()}
-                    type="button"
-                    disabled={bleUi.connecting || bleUi.disconnecting}
-                  >
-                    {actionLabel}
-                  </button>
-                  {connectNotice ? <span className="mode-switch-notice">{connectNotice}</span> : null}
-                </div>
-                {bleUi.lastError ? <div className="mobile-error-box">{bleUi.lastError}</div> : null}
-              </NeonPanel>
-            </section>
-            {meterViewNode}
-          </section>
-          <section className="mobile-page pro-preview-page">
-            {recentNode}
-            {!isProView ? (
-              <div className="pro-overlay">
-                <div className="pro-overlay-card">
-                  <h4>{t('pro.lockTitle')}</h4>
-                  <p>{t('pro.lockDescription')}</p>
-                  <div className="desktop-pro-actions">
-                    <button type="button" className="mini-btn subtle" onClick={handleToggleProMode}>
-                      {t('pro.unlockCta')}
-                    </button>
-                    <button type="button" className="mini-btn subtle" onClick={() => moveToMobilePage(0)}>
-                      {t('common.cancel')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </section>
-          <section className="mobile-page pro-preview-page">
-            {historyNode}
-            {!isProView ? (
-              <div className="pro-overlay">
-                <div className="pro-overlay-card">
-                  <h4>{t('pro.lockTitle')}</h4>
-                  <p>{t('pro.lockDescription')}</p>
-                  <div className="desktop-pro-actions">
-                    <button type="button" className="mini-btn subtle" onClick={handleToggleProMode}>
-                      {t('pro.unlockCta')}
-                    </button>
-                    <button type="button" className="mini-btn subtle" onClick={() => moveToMobilePage(0)}>
-                      {t('common.cancel')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </section>
+          {viewItems.map((item) => {
+            const locked = shouldLockView(item.view)
+            const pageClass =
+              item.view === 'meter'
+                ? 'mobile-page mobile-page-meter'
+                : locked
+                  ? 'mobile-page pro-preview-page'
+                  : 'mobile-page'
+            return (
+              <section key={item.view} className={pageClass}>
+                {renderViewNode(item.view)}
+                {locked ? renderLockedOverlay() : null}
+              </section>
+            )
+          })}
         </div>
-        <div className="mobile-page-dots" aria-label="Page indicator">
-          {[0, 1, 2].map((page) => (
-            <button
-              key={page}
-              type="button"
-              className={`mobile-page-dot ${activeMobilePage === page ? 'active' : ''}`}
-              onClick={() => moveToMobilePage(page)}
-              aria-label={t('mobile.pageMove', { page: page + 1 })}
-            >
-              {activeMobilePage === page ? '●' : '○'}
-            </button>
-          ))}
-        </div>
-        <div className="mobile-page-hint">{t('mobile.swipeHint')}</div>
+        <ShellFooter
+          className="mobile-footer"
+          dotsClassName="mobile-page-dots"
+          dotClassName="mobile-page-dot"
+          creditClassName="mobile-footer-credit"
+          items={viewItems.map((item) => ({ key: String(item.page), label: item.label }))}
+          activeKey={String(activeMobilePage)}
+          onSelect={(key) => moveToMobilePage(Number(key))}
+          pageMoveLabel={(page) => t('mobile.pageMove', { page })}
+          credit={(
+            <>
+              {t('mobile.creditLabel')}{' '}
+              <a href="https://x.com/bahamutonX" target="_blank" rel="noreferrer">
+                @bahamutonX
+              </a>
+            </>
+          )}
+        />
+        {showResetConfirm ? (
+          <div className="reset-confirm-overlay" role="dialog" aria-modal="true">
+            <div className="reset-confirm-card">
+              <h4>{t('history.reset')}</h4>
+              <p>{t('history.confirmReset')}</p>
+              <div className="reset-confirm-actions">
+                <button type="button" className="mini-btn subtle" onClick={handleResetAllCancel}>
+                  {t('common.cancel')}
+                </button>
+                <button type="button" className="mini-btn subtle" onClick={() => void handleResetAllConfirmed()}>
+                  {t('history.reset')}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {statusActionModalMode === 'disconnect' ? (
+          <div className="connect-modal-overlay" role="dialog" aria-modal="true">
+            <div className="connect-modal-card">
+              <h4>{t('common.disconnect')}</h4>
+              <p>{t('ble.disconnectConfirm')}</p>
+              <div className="connect-modal-actions">
+                <button type="button" className="mini-btn subtle" onClick={handleStatusActionCancel}>
+                  {t('common.cancel')}
+                </button>
+                <button type="button" className="mini-btn subtle" onClick={handleStatusActionConfirm}>
+                  {t('common.disconnect')}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {connectOverlayState !== 'hidden' ? (
           <div className="connect-modal-overlay" role="dialog" aria-modal="true">
             <div className={`connect-modal-card ${connectOverlayState}`}>
@@ -1473,61 +1788,47 @@ export function AppShell({ route: _route }: AppShellProps) {
     <main className={desktopMainClass}>
       {headerNode}
       <div className={`desktop-tabbed-shell ${desktopView === 'meter' ? 'meter-view' : ''}`}>
-        <div className="desktop-view-switch" role="tablist" aria-label={t('nav.tabsAria')}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={desktopView === 'meter'}
-            className={`header-mode-tab ${desktopView === 'meter' ? 'active' : ''}`}
-            onClick={() => handleDesktopSwitch('meter')}
-          >
-            <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M12 12l4-2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            {t('nav.meter')}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={desktopView === 'detail'}
-            className={`header-mode-tab ${desktopView === 'detail' ? 'active' : ''}`}
-            onClick={() => handleDesktopSwitch('detail')}
-          >
-            <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 8h5l4 8h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="6.5" cy="8" r="1.3" fill="currentColor" />
-              <circle cx="17.5" cy="16" r="1.3" fill="currentColor" />
-            </svg>
-            {t('nav.detail')}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={desktopView === 'raw'}
-            className={`header-mode-tab ${desktopView === 'raw' ? 'active' : ''}`}
-            onClick={() => handleDesktopSwitch('raw')}
-          >
-            <svg className="tab-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-            {t('pro.rawLogMode')}
-          </button>
-        </div>
+        <SegmentTabs
+          className="desktop-view-switch desktop-segment-switch"
+          items={desktopTabs}
+          activeKey={desktopView}
+          onChange={(key) => handleDesktopSwitch(key as 'settings' | 'meter' | 'shot' | 'band' | 'raw')}
+          buttonClassName="header-mode-tab"
+          ariaLabel={t('nav.tabsAria')}
+        />
         <NeonPanel className="desktop-content-shell">
-          <div className="desktop-tab-header">
-            <SectionHeader
-              en={desktopTabHeaderMeta.en}
-              title={desktopTabHeaderMeta.title}
-              description={desktopTabHeaderMeta.description}
-            />
-          </div>
-          <div className="desktop-content-body">
-            {desktopContent}
+          <div
+            className={`desktop-content-body desktop-view-${desktopView} ${desktopView === 'shot' ? 'desktop-detail-tab-shot' : desktopView === 'band' ? 'desktop-detail-tab-band' : ''}`}
+          >
+            <div className="desktop-pager" ref={desktopPagerRef}>
+              {viewItems.map((item) => (
+                <section key={item.view} className="desktop-page">
+                  {renderViewNode(item.view)}
+                </section>
+              ))}
+            </div>
           </div>
         </NeonPanel>
       </div>
+      <ShellFooter
+        className="desktop-footer-credit"
+        dotsClassName="desktop-page-dots"
+        dotClassName="desktop-page-dot"
+        creditClassName="desktop-credit-line"
+        items={viewItems.map((item) => ({ key: item.view, label: item.label }))}
+        activeKey={desktopView}
+        onSelect={(key) => handleDesktopSwitch(key as 'settings' | 'meter' | 'shot' | 'band' | 'raw')}
+        pageMoveLabel={(page) => t('mobile.pageMove', { page })}
+        credit={(
+          <>
+            by: {' '}
+            <a href="https://x.com/bahamutonX" target="_blank" rel="noreferrer">
+              @bahamutonX
+            </a>{' '}
+            Copyright © 2026
+          </>
+        )}
+      />
       {desktopProOverlay ? (
         <div className="pro-overlay desktop-pro-overlay">
           <div className="pro-overlay-card">
@@ -1544,6 +1845,38 @@ export function AppShell({ route: _route }: AppShellProps) {
               </button>
               <button type="button" className="mini-btn subtle" onClick={handleDesktopProCancel}>
                 {t('pro.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showResetConfirm ? (
+        <div className="reset-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="reset-confirm-card">
+            <h4>{t('history.reset')}</h4>
+            <p>{t('history.confirmReset')}</p>
+            <div className="reset-confirm-actions">
+              <button type="button" className="mini-btn subtle" onClick={handleResetAllCancel}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="mini-btn subtle" onClick={() => void handleResetAllConfirmed()}>
+                {t('history.reset')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {statusActionModalMode === 'disconnect' ? (
+        <div className="connect-modal-overlay" role="dialog" aria-modal="true">
+          <div className="connect-modal-card">
+            <h4>{t('common.disconnect')}</h4>
+            <p>{t('ble.disconnectConfirm')}</p>
+            <div className="connect-modal-actions">
+              <button type="button" className="mini-btn subtle" onClick={handleStatusActionCancel}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="mini-btn subtle" onClick={handleStatusActionConfirm}>
+                {t('common.disconnect')}
               </button>
             </div>
           </div>

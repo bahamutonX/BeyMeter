@@ -12,24 +12,36 @@
     "multi": "複数解析",
     "split": "Split表示"
   },
+  "detailTabs": {
+    "aria": "詳細解析ビュー切替",
+    "shot": "シュート解析",
+    "band": "シュート履歴"
+  },
   "meter": {
     "en": "METER",
     "title": "ベイメーター",
     "description": "最新シュートを即時表示",
+    "viewNumeric": "数値表示",
+    "viewGauge": "メーター表示",
     "latestShotPower": "最新シュート",
     "deviceBest": "MAX:",
     "maxUpdated": "MAX更新！",
     "resetBest": "ベストリセット",
-    "resetAll": "全データリセット"
+    "resetAll": "全データリセット",
+    "stopwatchTitle": "回転維持ストップウォッチ",
+    "stopwatchHelp": "シュート検知後に自動スタートします",
+    "stopwatchRunning": "計測中",
+    "stopwatchStopped": "停止",
+    "stopwatchStop": "ストップ"
   },
   "pro": {
     "lockTitle": "シュート詳細解析",
-    "lockDescription": "この機能はPro版（○○円）で利用できます",
+    "lockDescription": "この機能はPro版で利用できます",
     "unlockCta": "Pro版を購入する",
     "close": "閉じる",
-    "lockFeatureAnalysis": "詳細解析（単発シュート解析）",
-    "lockFeatureHistory": "履歴比較と帯域別の複数解析",
-    "lockFeatureRaw": "Rawログ表示とデータ解釈",
+    "lockFeatureAnalysis": "シュート解析: 1本ごとの波形と入力トルクを詳細表示",
+    "lockFeatureHistory": "帯域別データ: 複数本を比較して傾向を分析",
+    "lockFeatureRaw": "Rawログ表示: 受信データと解釈結果をそのまま確認",
     "switchToPro": "Pro版に変更",
     "switchToFree": "Lite版に変更",
     "switchToProView": "Pro版に変更",
@@ -39,7 +51,7 @@
     "proViewEnabledNotice": "Pro表示に切り替えました",
     "freeViewEnabledNotice": "Lite表示に切り替えました",
     "mobilePreview": "この画面はPro版で利用できます。",
-    "rawLogMode": "Rawログ表示"
+    "rawLogMode": "Rawログ"
   },
   "common": {
     "connect": "パスと接続する",
@@ -65,6 +77,9 @@
     "attachOn": "ベイ装着",
     "attachOff": "ベイ未装着",
     "attachUnknown": "ベイ状態: 不明",
+    "attachOnShort": "装着",
+    "attachOffShort": "未装着",
+    "attachUnknownShort": "不明",
     "readyToShoot": "シュートできます",
     "commError": "通信エラー",
     "connectGuideHeader": "接続ボタンを押してパスを長押ししてください",
@@ -72,8 +87,11 @@
     "nativeHoldToConnect": "パスを長押しして接続してください",
     "nativeConnected": "接続しました！",
     "nativeConnectFailed": "接続できませんでした。再度お試しください。",
+    "userCanceled": "接続操作がキャンセルされました。再度お試しください。",
+    "permissionDenied": "Bluetooth権限が許可されていません。設定で許可して再試行してください。",
     "connectTimeout": "接続がタイムアウトしました。接続ボタンを押してからパスを長押ししてください。",
     "connectFailedSimple": "接続できませんでした。",
+    "disconnectConfirm": "パス接続を切断します。よろしいですか？",
     "deviceNotFound": "パスが見つかりません。接続ボタンを押してからパスを長押ししてください。",
     "connectFailed": "接続に失敗しました。接続ボタンを押してからパスを長押ししてください。",
     "initFailed": "Bluetooth機能の初期化に失敗しました。アプリを再起動して再接続してください。",
@@ -93,7 +111,8 @@
     "connectedNotice": "パスと接続できました",
     "guideAfterConnect": "ベイを装着して、シュートしてください。連続してシュートできます。",
     "pageMove": "ページ {{page}} に移動",
-    "swipeHint": "左右スワイプ、または下のドットでページ移動できます"
+    "swipeHint": "左右スワイプ、または下のドットでページ移動できます",
+    "creditLabel": "by:"
   },
   "recent": {
     "en": "RECENT",
@@ -102,6 +121,7 @@
     "statusAria": "直近画面ステータス",
     "chartStatusAria": "接続状態",
     "recordSp": "記録シュートパワー",
+    "shotPower": "シュートパワー",
     "waveformTitle": "直近のシュート波形",
     "shotPowerAnalysisTitle": "シュートパワーの解析",
     "torqueAnalysisTitle": "入力トルクの解析",
@@ -118,10 +138,10 @@
   },
   "history": {
     "en": "HISTORY",
-    "title": "シュート履歴と分析",
+    "title": "シュート履歴",
     "description": "過去のデータから帯域別に特徴を解析することができます",
     "reset": "データリセット",
-    "confirmReset": "履歴データをすべて削除します。元に戻せません。実行しますか？",
+    "confirmReset": "BeyMeterアプリに取り込んだデータを削除します。元に戻せません。実行しますか？",
     "bandTitle": "シュートパワー帯域",
     "countUnit": "件",
     "summary": "シュートパワー統計: 合計 {{total}}本 / 平均 {{avg}} rpm / 最高 {{max}} rpm / SD {{stddev}}",
@@ -158,17 +178,19 @@
   },
   "settings": {
     "en": "SETTINGS",
-    "connectionEn": "SETTINGS & CONNECTION"
+    "connectionEn": "SETTINGS & CONNECTION",
+    "short": "設定・接続",
+    "resetHelp": "BeyMeterアプリに取り込んだ全データを削除します"
   },
   "rawlog": {
     "en": "RAW LOG",
-    "title": "パス Rawログ",
+    "title": "Rawログ",
     "description": "パスが出すログをそのまま表示し、右に解析内容を表示",
     "clear": "ログ消去",
     "back": "ベイメーターへ戻る",
     "connected": "接続",
     "attached": "ベイ装着",
-    "bundle": "シュート束",
+    "bundle": "シュート",
     "complete": "確定",
     "partial": "受信中",
     "packetCount": "パケット数",

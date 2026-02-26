@@ -11,7 +11,7 @@ export function SectionHeader({
     <header className="section-header">
       <div className="section-en">{en}</div>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
     </header>
   )
 }

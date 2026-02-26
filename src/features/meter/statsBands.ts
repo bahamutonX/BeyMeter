@@ -23,7 +23,7 @@ export interface BandStats {
 const BAND_MIN = 0
 const BAND_STEP = 1000
 const BAND_LOW_SPLIT = 4000
-const BAND_TOP = 12000
+const BAND_TOP = 14000
 
 export const BAND_DEFS: BandDef[] = (() => {
   const defs: BandDef[] = [
@@ -43,8 +43,8 @@ export const BAND_DEFS: BandDef[] = (() => {
     })
   }
   defs.push({
-    id: '12000+',
-    label: '12000+',
+    id: '14000+',
+    label: '14000+',
     min: BAND_TOP,
     maxExclusive: null,
   })
@@ -81,7 +81,7 @@ export function getBand(score: number): string | null {
     return '0-3999'
   }
   if (score >= BAND_TOP) {
-    return '12000+'
+    return '14000+'
   }
   const start = Math.floor((score - BAND_LOW_SPLIT) / BAND_STEP) * BAND_STEP + BAND_LOW_SPLIT
   return `${start}-${start + BAND_STEP - 1}`

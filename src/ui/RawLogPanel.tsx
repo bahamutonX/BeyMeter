@@ -12,7 +12,6 @@ import {
 
 interface RawLogPanelProps {
   packets: BbpPacket[]
-  onClear: () => void
 }
 
 interface RawShotBundleView {
@@ -37,6 +36,14 @@ function formatTimestamp(ts: number): string {
   const ss = String(d.getSeconds()).padStart(2, '0')
   const mss = String(d.getMilliseconds()).padStart(3, '0')
   return `${hh}:${mm}:${ss}.${mss}`
+}
+
+function formatDateKey(ts: number): string {
+  const d = new Date(ts)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function readU16LE(bytes: Uint8Array, offset: number): number {
@@ -319,58 +326,79 @@ function buildShotBundles(packets: BbpPacket[]): RawShotBundleView[] {
   return bundles.reverse()
 }
 
-export function RawLogPanel({ packets, onClear }: RawLogPanelProps) {
+export function RawLogPanel({ packets }: RawLogPanelProps) {
   const { t } = useTranslation()
   const shotBundles = useMemo(() => buildShotBundles(packets), [packets])
+  const groupedByDate = useMemo(() => {
+    const groups: Array<{ date: string; bundles: RawShotBundleView[] }> = []
+    let currentDate: string | null = null
+    let current: { date: string; bundles: RawShotBundleView[] } | null = null
+    for (const bundle of shotBundles) {
+      const date = formatDateKey(bundle.tStart)
+      if (date !== currentDate) {
+        currentDate = date
+        current = { date, bundles: [] }
+        groups.push(current)
+      }
+      current?.bundles.push(bundle)
+    }
+    return groups
+  }, [shotBundles])
 
   return (
     <div className="rawlog-list-wrap">
       <div className="rawlog-list-head">
         <h2>{t('rawlog.receivedAll')}</h2>
-        <div className="rawlog-actions">
-          <button className="mini-btn subtle" type="button" onClick={onClear}>{t('history.reset')}</button>
-        </div>
       </div>
       <div className="rawlog-list">
         {shotBundles.length === 0 ? (
           <div className="rawlog-empty">{t('rawlog.waiting')}</div>
         ) : null}
-        {shotBundles.map((bundle) => (
-          <details className="rawlog-bundle" key={`bundle-${bundle.id}`} open={bundle.id === shotBundles[0]?.id}>
-            <summary className="rawlog-bundle-summary">
-              <span>{`${t('rawlog.bundle')} #${bundle.id}`}</span>
-              <span>{`${formatTimestamp(bundle.tStart)} - ${formatTimestamp(bundle.tEnd)}`}</span>
-              <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
-              <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
-            </summary>
-            <div className="rawlog-bundle-body">
-              <div className="rawlog-packets-compact">
-                {bundle.packets.map(({ packet: p }, idx) => (
-                  <div className="rawlog-row compact" key={`${bundle.id}-${p.timestamp}-${idx}`}>
-                    <div className="rawlog-meta">
-                      <span>{formatTimestamp(p.timestamp)}</span>
-                      <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
-                      <span>{`len=${p.length}`}</span>
-                    </div>
-                    <code>{p.hex}</code>
-                  </div>
-                ))}
-              </div>
-              <div className="rawlog-summary-table-wrap">
-                <div className="rawlog-summary-title">{t('rawlog.summary.title')}</div>
-                <table className="rawlog-summary-table">
-                  <tbody>
-                    {buildSummaryRows(bundle, t).map((row) => (
-                      <tr key={`${bundle.id}-${row.label}`}>
-                        <th>{row.label}</th>
-                        <td>{row.value}</td>
-                      </tr>
+        {groupedByDate.map((group) => (
+          <div className="rawlog-date-group" key={`date-${group.date}`}>
+            <div className="rawlog-date-header">{group.date}</div>
+            {group.bundles.map((bundle) => (
+              <details
+                className="rawlog-bundle"
+                key={`bundle-${bundle.id}`}
+                open={bundle.id === shotBundles[0]?.id}
+              >
+                <summary className="rawlog-bundle-summary">
+                  <span>{`${t('rawlog.bundle')} #${bundle.id}`}</span>
+                  <span>{`${formatTimestamp(bundle.tStart)} - ${formatTimestamp(bundle.tEnd)}`}</span>
+                  <span>{`${t('rawlog.packetCount')}: ${bundle.packets.length}`}</span>
+                  <span>{bundle.isCompleteShot ? t('rawlog.complete') : t('rawlog.partial')}</span>
+                </summary>
+                <div className="rawlog-bundle-body">
+                  <div className="rawlog-packets-compact">
+                    {bundle.packets.map(({ packet: p }, idx) => (
+                      <div className="rawlog-row compact" key={`${bundle.id}-${p.timestamp}-${idx}`}>
+                        <div className="rawlog-meta">
+                          <span>{formatTimestamp(p.timestamp)}</span>
+                          <span>{`0x${p.header.toString(16).toUpperCase().padStart(2, '0')}`}</span>
+                          <span>{`len=${p.length}`}</span>
+                        </div>
+                        <code>{p.hex}</code>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </details>
+                  </div>
+                  <div className="rawlog-summary-table-wrap">
+                    <div className="rawlog-summary-title">{t('rawlog.summary.title')}</div>
+                    <table className="rawlog-summary-table">
+                      <tbody>
+                        {buildSummaryRows(bundle, t).map((row) => (
+                          <tr key={`${bundle.id}-${row.label}`}>
+                            <th>{row.label}</th>
+                            <td>{row.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
         ))}
       </div>
     </div>
